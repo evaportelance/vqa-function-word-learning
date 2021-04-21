@@ -1,0 +1,1 @@
+{"Noun":{"Shape":["sphere", "cube", "cylinder"], "Thing":["thing"]}, "Modifier":{"Color":["gray", "red", "blue", "green", "brown", "purple", "cyan", "yellow"], "Size":["small", "large"], "Material":["metal", "rubber"], "Null":[""]}, "Property":{"Color":"color", "Material":"material", "Size":"size", "Shape":"shape"}}
