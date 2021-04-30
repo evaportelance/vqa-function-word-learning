@@ -217,7 +217,10 @@ def create_probe(template):
         for image_index, answer in images_answers_pairs:
             if answer:
                 good_images_answers.append((image_index, answer))
-        choice_images_answers = random.sample(good_images_answers, 10)
+        if len(good_images_answers) >= 10:
+            choice_images_answers = random.sample(good_images_answers, 10)
+        else:
+            choice_images_answers = good_images_answers
         for image_index, answer in choice_images_answers:
             image_filename = "CLEVR_val_"+str(image_index)+".png"
             q = Question(split, image_index, image_filename, question, answer, id_counter)
