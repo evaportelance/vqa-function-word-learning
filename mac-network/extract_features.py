@@ -7,7 +7,9 @@
 import argparse, os, json
 import h5py
 import numpy as np
-from scipy.misc import imread, imresize
+#from scipy.misc import imread, imresize   #depricated so made some changes using torchvision.transform and PIL.Image - EP
+from torchvision import transforms
+from PIL import Image
 
 import torch
 import torchvision
@@ -54,10 +56,13 @@ def run_batch(cur_batch, model):
   image_batch = np.concatenate(cur_batch, 0).astype(np.float32)
   image_batch = (image_batch / 255.0 - mean) / std
   image_batch = torch.FloatTensor(image_batch).cuda()
-  image_batch = torch.autograd.Variable(image_batch, volatile=True)
+  #image_batch = torch.autograd.Variable(image_batch, volatile=True)
 
-  feats = model(image_batch)
-  feats = feats.data.cpu().clone().numpy()
+  #feats = model(image_batch)
+  #feats = feats.data.cpu().clone().numpy()
+  with torch.no_grad():
+      feats = model(image_batch)
+      feats = feats.data.cpu().clone().numpy()
 
   return feats
 
@@ -81,14 +86,23 @@ def main(args):
   model = build_model(args)
 
   img_size = (args.image_height, args.image_width)
+
+  transform = transforms.Compose([
+      transforms.Resize(img_size, interpolation=transforms.InterpolationMode.BICUBIC),
+      transforms.ToTensor()
+      #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.224])
+  ])
+
   with h5py.File(args.output_h5_file, 'w') as f:
     feat_dset = None
     i0 = 0
     cur_batch = []
     for i, (path, idx) in enumerate(input_paths):
-      img = imread(path, mode='RGB')
-      img = imresize(img, img_size, interp='bicubic')
-      img = img.transpose(2, 0, 1)[None]
+      #img = imread(path, mode='RGB')
+      #img = imresize(img, img_size, interp='bicubic')
+      #img = img.transpose(2, 0, 1)[None]  ### I THINK THIS TRANSPOSE IS THE ISSUE
+      img = Image.open(path).convert('RGB')
+      img = transform(img)[None]
       cur_batch.append(img)
       if len(cur_batch) == args.batch_size:
         feats = run_batch(cur_batch, model)

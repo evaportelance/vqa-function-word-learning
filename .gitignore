@@ -1,3 +1,7 @@
-.DS_Store
-.h5
-.ipynb_checkpoints
+*.DS_Store
+*.h5
+*.ipynb_checkpoints
+*__pycache__/
+*nohup.out
+*report.txt
+*run.sh
