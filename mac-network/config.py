@@ -36,7 +36,7 @@ class Config(object):
     # model predictions and optionally attention maps
     predsPath = "../../data/preds"
     predsFilename = "{tier}Predictions-{expName}.json"
-    answersFilename = "{tier}Answers-{expName}.txt"
+    answersFilename = "{tier}-Answers-{expName}.csv"
 
     # logging of accuracy, loss etc. per epoch
     logPath = "../../data/results"
@@ -130,7 +130,7 @@ def parseArgs():
 
     # data files
     parser.add_argument("--dataset",         default = "CLEVR", choices = ["CLEVR", "NLVR"], type = str) #
-    parser.add_argument("--dataBasedir",     default = "../../data/", type = str,            help = "data base directory") # /jagupard14/scr1/dorarad/
+    parser.add_argument("--dataBasedir",     default = "../../data", type = str,            help = "data base directory") # /jagupard14/scr1/dorarad/
     parser.add_argument("--generatedPrefix", default = "gennew", type = str,           help = "prefix for generated data files")
     parser.add_argument("--featureType",     default = "norm_128x32", type = str,   help = "features type") #
     # resnet101_512x128, norm_400x100, none_80x20, normPerImage_80x20, norm_80x20

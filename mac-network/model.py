@@ -54,7 +54,7 @@ class MACnet(object):
 
         dropout values dictionary (tensor scalars)
     '''
-    # change to H x W x C?
+#    change to H x W x C?
     def addPlaceholders(self):
         with tf.compat.v1.variable_scope("Placeholders"):
             ## data
@@ -76,8 +76,7 @@ class MACnet(object):
             self.lr = tf.compat.v1.placeholder(tf.float32, shape = ())
             self.train = tf.compat.v1.placeholder(tf.bool, shape = ())
             self.batchSizeAll = tf.shape(input=self.questionsIndicesAll)[0]
-
-            ## dropouts
+         # dropouts
             # TODO: change dropouts to be 1 - current
             self.dropouts = {
                 "encInput": tf.compat.v1.placeholder(tf.float32, shape = ()),
@@ -447,7 +446,10 @@ class MACnet(object):
             state = self.macCell.zero_state(self.batchSize, tf.float32)
 
             # inSeq = tf.unstack(inSeq, axis = 1)
-            none = tf.zeros((self.batchSize, 1), dtype = tf.float32)
+
+            #### EP change for compatibility with tf 2.0
+            #none = tf.zeros((self.batchSize, 1), dtype = tf.float32)
+            none = tf.zeros_like((self.batchSize, 1), dtype = tf.float32)
 
             # for i, inp in enumerate(inSeq):
             for i in range(config.netLength):

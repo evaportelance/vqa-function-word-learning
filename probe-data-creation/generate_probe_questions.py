@@ -62,7 +62,6 @@ def test_scene_answer(scene, split, params):
                 o2_index = i
         return Object(o1_exist, o1_count, o1_index), Object(o2_exist, o2_count, o2_index)
         # return object1_exist, object2_exist, object1_count, object2_count, object1_index, object2_index
-
     image_index = scene["image_index"]
     objects = scene["objects"]
     answer = None
@@ -76,7 +75,6 @@ def test_scene_answer(scene, split, params):
             # no inclusive: !(<M> <N> and <M1> <N1>)
             # no exclusive: !(<M> <N> and <M1> <N1>), (<M> <N> and <M1> <N1>)
         o1, o2 = helper_two_objects(objects)
-
         #Answer conditions
         if o1.exist is not o2.exist:
             answer = "yes"
@@ -84,7 +82,6 @@ def test_scene_answer(scene, split, params):
             answer = "yes (inclusive) / no (exclusive)"
         else:
             answer = "no"
-
     elif split == ProbeType.AND:
         #AND "answers" : "yes" "no"
         #"Is there a <M> <N> and a <M1> <N1>?"
@@ -93,10 +90,8 @@ def test_scene_answer(scene, split, params):
             # yes : (<M> <N> and <M1> <N1>)
             # no : !(<M> <N>), !(<M1> <N1>)
         o1, o2 = helper_two_objects(objects)
-
         #Answer conditions
         answer = "yes" if o1.exist and o2.exist else "no"
-
     elif split == ProbeType.MORE:
         #MORE "answers" : "yes" "no" consider by relative number of each item
         #"Are there more of the <M> <N>s than the <M1> <N1>s?"
@@ -105,13 +100,11 @@ def test_scene_answer(scene, split, params):
             # yes : count(<M> <N>) > count(<M1> <N1>)
             # no : count(<M> <N>) <= count(<M1> <N1>)
         o1, o2 = helper_two_objects(objects)
-
         #Presupposition
         if o1.count and o2.count:
             #Answer conditions
             more = o1.count > o2.count
             answer = "yes" if more else "no"
-
     elif split == ProbeType.LESS:
         #LESS "answers" : "yes" "no" consider by relative number of each item
         #"Are there fewer of the <M> <N>s than the <M1> <N1>s?"
@@ -119,15 +112,12 @@ def test_scene_answer(scene, split, params):
         #Answers:
             # yes : count(<M> <N>) < count(<M1> <N1>)
             # no : count(<M> <N>) >= count(<M1> <N1>)
-
         o1, o2 = helper_two_objects(objects)
-
         #Presupposition
         if o1.count and o2.count:
             #Answer conditions
             less = o1.count < o2.count
             answer = "yes" if less else "no"
-
     elif split == ProbeType.BEHIND:
         #BEHIND "answers" : "yes" "no" consider distance and occlusion
         #"Is the <M> <N> behind the <M1> <N1>?"
@@ -135,15 +125,12 @@ def test_scene_answer(scene, split, params):
         #Answers:
             # yes : in_relation_behind(<M> <N>)(<M1> <N1>)
             # no : !in_relation_behind(<M> <N>)(<M1> <N1>)
-
         o1, o2 = helper_two_objects(objects)
-
         #Presupposition
         if o1.count == 1 and o2.count == 1:
             #Answer conditions
             behind = o1.index in scene["relationships"]["behind"][o2.index]
             answer = "yes" if behind else "no"
-
     elif split == ProbeType.FRONT:
         #IN FRONT OF "answers" : "yes" "no" consider distance and occlusion
         #"Is the <M> <N> in front of the <M1> <N1>?"
@@ -151,15 +138,12 @@ def test_scene_answer(scene, split, params):
         #Answers:
             # yes : in_relation_front(<M> <N>)(<M1> <N1>)
             # no : !in_relation_front(<M> <N>)(<M1> <N1>)
-
         o1, o2 = helper_two_objects(objects)
-
         #Presupposition
         if o1.count == 1 and o2.count == 1:
             # Answer conditions
             front = o1.index in scene["relationships"]["front"][o2.index]
             answer = "yes" if front else "no"
-
     elif split == ProbeType.SAME:
         #SAME "answers" : "yes" "no" consider by feature eg what was the feature type and what was the feature value?
         #"Are the <M> <N>s the same <P>?"
@@ -185,7 +169,6 @@ def test_scene_answer(scene, split, params):
         if object_count > 1:
             #Answer conditions
             answer = "yes" if same else "no"
-
     return (image_index, answer)
 
 def create_probe(template):
@@ -259,7 +242,7 @@ def main():
         g_two_referent_params = json.load(two_referent)
 
     # Note this will hopefully be replaced by the test image scenes once the authors get back to us
-    with open("../../data/CLEVR_v1.0/scenes/CLEVR_val_scenes.json") as image_info:
+    with open("../../data/CLEVR_v1/scenes/CLEVR_val_scenes.json") as image_info:
         scenes = json.load(image_info)
     g_scenes = scenes['scenes']
     get_probes_questions()

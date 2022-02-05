@@ -74,7 +74,9 @@ class MACCell(tf.compat.v1.nn.rnn_cell.RNNCell):
         self.dropouts["read"] = readDropout
         self.dropouts["write"] = writeDropout
 
-        self.none = tf.zeros((batchSize, 1), dtype = tf.float32)
+        #### EP change for compatibility with tf 2.0
+        #self.none = tf.zeros((batchSize, 1), dtype = tf.float32)
+        self.none = tf.zeros_like((batchSize, 1), dtype = tf.float32)
 
         self.batchSize = batchSize
         self.train = train

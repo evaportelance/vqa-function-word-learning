@@ -603,8 +603,8 @@ def runEpoch(sess, model, data, train, epoch, saver = None, calle = None,
         # if config.summerize and writer is not None:
         #     writer.add_summary(res["summary"], epoch)
 
-        sys.stdout.write(statsToStr(stats, res, epoch, batchNum, dataLen, startTime))
-        sys.stdout.flush()
+        #sys.stdout.write(statsToStr(stats, res, epoch, batchNum, dataLen, startTime))
+        #sys.stdout.flush()
 
         # save weights
         if saver is not None:
@@ -618,10 +618,10 @@ def runEpoch(sess, model, data, train, epoch, saver = None, calle = None,
             if batchNum > 0 and batchNum % config.calleEvery == 0:
                 calle()
 
-    sys.stdout.write("\r")
-    sys.stdout.flush()
+    #sys.stdout.write("\r")
+    #sys.stdout.flush()
 
-    print("")
+    #print("")
 
     closeImageFiles(data["images"])
 

@@ -1,0 +1,318 @@
+---
+title: "analysis_plots"
+author: "Eva Portelance"
+date: "2/2/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(ggplot2)
+library(glue)
+library(ggpubr)
+```
+
+# Plots for VQA function word analyses
+
+## Experiment 1 : Trained on CLEVR
+```{r}
+# For experiment 1 run 0
+result_dir = "../../data/results/2022-02-01_epochprobes_e25_4mac_newh5"
+# For experiment 1 run 1
+result_dir = "../../data/results/2022-02-04_epochprobes_e25_4mac_newh5_seed1"
+```
+
+### Overall accuracy during learning
+
+Note that the overall accuracy of ORprobe is lower than it should be since ambiguous questions are included here.
+```{r}
+filename = paste(result_dir, "probe-results-2022-02-01_epochprobes_e25_4mac_newh5.csv", sep="/")
+overall_acc <- read_csv(filename, skip=1)
+# 10938 is the total number of batches in an epoch
+overall_acc <- overall_acc |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |>
+  pivot_longer(cols = c(ANDprobeAcc, ORprobeAcc, MOREprobeAcc, LESSprobeAcc, BEHINDprobeAcc, FRONTprobeAcc, SAMEprobeAcc), names_to="probetype", values_to="acc")
+
+# Accuracy by batches
+ggplot(overall_acc, aes(x=batches, y=acc, color=probetype))+
+  geom_line()
+
+ggplot(overall_acc |> filter(probetype %in% c("ANDprobeAcc", "ORprobeAcc")), aes(x=batches, y=acc, color=probetype))+
+  geom_line()
+
+ggplot(overall_acc |> filter(probetype %in% c("MOREprobeAcc", "LESSprobeAcc")), aes(x=batches, y=acc, color=probetype))+
+  geom_line()
+
+ggplot(overall_acc |> filter(probetype %in% c("BEHINDprobeAcc", "FRONTprobeAcc")), aes(x=batches, y=acc, color=probetype))+
+  geom_line()
+
+# Accuracy by epochs
+overall_acc_epochs <- overall_acc |> filter(batchNum == 0)
+
+ggplot(overall_acc_epochs, aes(x=epoch, y=acc, color=probetype))+
+  geom_line()
+
+ggplot(overall_acc_epochs |> filter(probetype %in% c("ANDprobeAcc", "ORprobeAcc")), aes(x=epoch, y=acc, color=probetype))+
+  geom_line()
+
+ggplot(overall_acc_epochs |> filter(probetype %in% c("MOREprobeAcc", "LESSprobeAcc")), aes(x=epoch, y=acc, color=probetype))+
+  geom_line()
+
+ggplot(overall_acc_epochs |> filter(probetype %in% c("BEHINDprobeAcc", "FRONTprobeAcc")), aes(x=epoch, y=acc, color=probetype))+
+  geom_line()
+```
+
+### Analyses by probe type
+
+#### AND - OR by answer type
+```{r}
+and_filename = paste(result_dir, "probeAND_res_by_answer_type.csv", sep="/")
+or_filename = paste(result_dir, "probeOR_res_by_answer_type.csv", sep="/")
+and_acc <- read_csv(and_filename)
+or_acc <- read_csv(or_filename)
+and_or_acc <- rbind(and_acc, or_acc)
+
+and_or_acc <- and_or_acc |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+  group_by(probetype, epoch, batchNum) |>
+  mutate(overall_total = sum(n_total), overall_correct = sum(n_correct)) 
+
+# Accuracy by batches
+ggplot(and_or_acc, aes(x=batches, y=prop_correct, color=answer))+
+  geom_line() +
+  facet_wrap(vars(probetype))
+
+# Accuracy by epoch
+ggplot(and_or_acc |> filter(batchNum == 0), aes(x=epoch, y=prop_correct, color=answer))+
+  geom_line()+
+  facet_wrap(vars(probetype))
+
+
+# OR and AND overall with OR ambiguous cases removed
+ggplot(and_or_acc, aes(x=batches, y=(overall_correct/overall_total), color=probetype))+
+  geom_line()
+
+ggplot(and_or_acc |> filter(batchNum == 0), aes(x=epoch, y=(overall_correct/overall_total), color=probetype))+
+  geom_line()
+
+```
+#### OR inclusive - exclusive
+
+```{r}
+filename = paste(result_dir, "probeOR_res_or_inclusive_exclusive.csv", sep="/")
+or_amb_acc <- read_csv(filename)
+
+or_amb_acc <- or_amb_acc |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+  pivot_longer(cols = c(prop_inclusive, prop_exclusive), names_to="answer_type", values_to="proportion")
+  
+
+# Proportion by batches
+ggplot(or_amb_acc, aes(x=batches, y=proportion, color=answer_type))+
+  geom_line()
+
+# Proportion by epoch
+ggplot(or_amb_acc |> filter(batchNum == 0), aes(x=epoch, y=proportion, color=answer_type))+
+  geom_line()
+
+```
+
+#### BEHIND - FRONT by answer type
+```{r}
+behind_filename = paste(result_dir, "probeBEHIND_res_by_answer_type.csv", sep="/")
+front_filename = paste(result_dir, "probeFRONT_res_by_answer_type.csv", sep="/")
+behind_acc <- read_csv(behind_filename)
+front_acc <- read_csv(front_filename)
+behind_front_acc <- rbind(behind_acc, front_acc)
+
+behind_front_acc <- behind_front_acc |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+  group_by(probetype, epoch, batchNum) |>
+  mutate(overall_total = sum(n_total), overall_correct = sum(n_correct)) 
+
+# Accuracy by batches
+ggplot(behind_front_acc, aes(x=batches, y=prop_correct, color=answer))+
+  geom_line() +
+  facet_wrap(vars(probetype))
+
+# Accuracy by epoch
+ggplot(behind_front_acc |> filter(batchNum == 0), aes(x=epoch, y=prop_correct, color=answer))+
+  geom_line()+
+  facet_wrap(vars(probetype))
+
+```
+
+
+#### BEHIND - FRONT by distance
+```{r}
+behind_filename = paste(result_dir, "probeBEHIND_res_by_round_dist.csv", sep="/")
+front_filename = paste(result_dir, "probeFRONT_res_by_round_dist.csv", sep="/")
+behind_round_dist <- read_csv(behind_filename)
+front_round_dist <- read_csv(front_filename)
+behind_front_round_dist <- rbind(behind_round_dist, front_round_dist)
+
+behind_front_round_dist <- behind_front_round_dist |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+  group_by(probetype, epoch, batchNum, batches, dist) |>
+  mutate(n_by_dist = sum(counts)) |>
+  mutate(correct = ifelse(answer==prediction, "true", "false")) |>
+  group_by(probetype, epoch, batchNum, batches, dist, correct) |>
+  mutate(n_correct_by_dist = sum(counts))
+
+behind_front_round_dist_sum <- behind_front_round_dist |> 
+  filter(correct == "true") |>
+  mutate(prop_correct = n_correct_by_dist/n_by_dist) |>
+  select(c(probetype, epoch, batches, dist, prop_correct)) |>
+  unique() 
+
+# by batch
+ggplot(behind_front_round_dist_sum, aes(x=batches, y=prop_correct, color=dist))+
+  geom_point() +
+  facet_wrap(vars(probetype))
+
+# by epoch
+ggplot(behind_front_round_dist_sum |> filter(batchNum == 0), aes(x=epoch, y=prop_correct, color=dist))+
+  geom_point() +
+  facet_wrap(vars(probetype))
+
+```
+
+
+#### MORE - LESS by answer type
+```{r}
+more_filename = paste(result_dir, "probeMORE_res_by_answer_type.csv", sep="/")
+less_filename = paste(result_dir, "probeLESS_res_by_answer_type.csv", sep="/")
+more_acc <- read_csv(more_filename)
+less_acc <- read_csv(less_filename)
+more_less_acc <- rbind(more_acc, less_acc)
+
+more_less_acc <- more_less_acc |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+  group_by(probetype, epoch, batchNum) |>
+  mutate(overall_total = sum(n_total), overall_correct = sum(n_correct)) 
+
+# Accuracy by batches
+ggplot(more_less_acc, aes(x=batches, y=prop_correct, color=answer))+
+  geom_line() +
+  facet_wrap(vars(probetype))
+
+# Accuracy by epoch
+ggplot(more_less_acc |> filter(batchNum == 0), aes(x=epoch, y=prop_correct, color=answer))+
+  geom_line()+
+  facet_wrap(vars(probetype))
+
+# For LESS probe tends to just answer yes a disproportionate amount of times.
+# maybe get proportion of yes/no in answers vs predictions
+# Also tends to say yes a lot for MORE probe though to a lesser extent.
+```
+
+#### MORE - LESS by number difference and overall without zero difference
+```{r}
+more_filename = paste(result_dir, "probeMORE_res_by_num_diff.csv", sep="/") 
+less_filename = paste(result_dir, "probeLESS_res_by_num_diff.csv", sep="/")
+more_num_diff <- read_csv(more_filename)
+less_num_diff <- read_csv(less_filename)
+more_less_num_diff <- rbind(more_num_diff, less_num_diff)
+
+more_less_num_diff_ <- more_less_num_diff |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+  group_by(probetype, epoch, batchNum, batches, num_diff) |>
+  mutate(n_by_diff = sum(counts)) |>
+  mutate(correct = ifelse(answer==prediction, "true", "false")) |>
+  group_by(probetype, epoch, batchNum, batches, num_diff, correct) |>
+  mutate(n_correct_by_diff = sum(counts))
+
+more_less_num_diff_sum <- more_less_num_diff_ |> 
+  filter(correct == "true") |>
+  mutate(prop_correct = n_correct_by_diff/n_by_diff) |>
+  select(c(probetype, epoch, batches, num_diff, prop_correct)) |>
+  unique() 
+
+# by batch
+ggplot(more_less_num_diff_sum, aes(x=batches, y=prop_correct, color=num_diff))+
+  geom_point() +
+  scale_colour_gradient2(high = "blue", mid = "orange", low = "blue") +
+  facet_wrap(vars(probetype))
+
+# by epoch
+ggplot(more_less_num_diff_sum |> filter(batchNum == 0), aes(x=epoch, y=prop_correct, color=num_diff))+
+  geom_point() +
+  scale_colour_gradient2(high = "blue", mid = "yellow", low = "blue") +
+  facet_wrap(vars(probetype))
+
+## Clearly the num difference is super important and where the model struggles is when there is no difference it says there is almost automatically! This may be because the clevr training set also includes equal_than, similar to more_than/less_than type questions which lead the model to trink that zero difference is a yes answer.
+
+#What is performance like if we remove the zero cases
+
+more_less_acc_no0 <- more_less_num_diff |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+  filter(num_diff != 0) |>
+  mutate(correct = ifelse(answer==prediction, "true", "false")) |>
+  group_by(probetype, epoch, batchNum, batches) |>
+  mutate(n_total = sum(counts)) |>
+  group_by(probetype, epoch, batchNum, batches, correct) |>
+  mutate(n_correct = sum(counts),
+         prop_correct = n_correct/n_total) |>
+  ungroup() |>
+  filter(correct == "true") |>
+  select(probetype, epoch, batchNum, batches, prop_correct) |>
+  unique()
+
+# by batch
+ggplot(more_less_acc_no0, aes(x=batches, y=prop_correct, color=probetype))+
+  geom_line() 
+
+# by epoch
+ggplot(more_less_acc_no0 |> filter(batchNum == 0), aes(x=epoch, y=prop_correct, color=probetype))+
+  geom_line()
+
+```
+
+#### MORE - LESS by number sum
+```{r}
+more_filename = paste(result_dir, "probeMORE_res_by_num_sum.csv", sep="/") 
+less_filename = paste(result_dir, "probeLESS_res_by_num_sum.csv", sep="/")
+more_num_sum <- read_csv(more_filename)
+less_num_sum <- read_csv(less_filename)
+more_less_num_sum <- rbind(more_num_sum, less_num_sum)
+
+more_less_num_sum_ <- more_less_num_sum |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+  group_by(probetype, epoch, batchNum, batches, num_sum) |>
+  mutate(n_by_sum = sum(counts)) |>
+  mutate(correct = ifelse(answer==prediction, "true", "false")) |>
+  group_by(probetype, epoch, batchNum, batches, num_sum, correct) |>
+  mutate(n_correct_by_sum = sum(counts))
+
+more_less_num_sum_sum <- more_less_num_sum_ |> 
+  filter(correct == "true") |>
+  mutate(prop_correct = n_correct_by_sum/n_by_sum) |>
+  select(c(probetype, epoch, batches, num_sum, prop_correct)) |>
+  unique() 
+
+# by batch
+ggplot(more_less_num_sum_sum, aes(x=batches, y=prop_correct, color=num_sum))+
+  geom_point() +
+  facet_wrap(vars(probetype))
+
+# by epoch
+ggplot(more_less_num_sum_sum |> filter(batchNum == 0), aes(x=epoch, y=prop_correct, color=num_sum))+
+  geom_point() +
+  facet_wrap(vars(probetype))
+```
+
+#### SAME - NOT SAME (SAME by answer type)
+```{r}
+filename = paste(result_dir, "probeSAME_res_by_answer_type.csv", sep="/")
+same_acc <- read_csv(filename)
+
+
+same_acc <- same_acc |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+  group_by(epoch, batchNum) |>
+  mutate(overall_total = sum(n_total), overall_correct = sum(n_correct)) 
+
+# Accuracy by batches
+ggplot(same_acc, aes(x=batches, y=prop_correct, color=answer))+
+  geom_line()
+
+# Accuracy by epoch
+ggplot(same_acc |> filter(batchNum == 0), aes(x=epoch, y=prop_correct, color=answer))+
+  geom_line()
+
+# Note the initial peak in accuracy for yes questions is just because the model answers "yes" to the large majority of SAME probe questions indiscriminately
+```
+
+
