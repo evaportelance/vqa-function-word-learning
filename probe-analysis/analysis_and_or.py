@@ -43,7 +43,7 @@ def analyse_results(probetype, pred_dir, res_dir):
         if probetype in filename:
             answer_data = pd.read_csv(os.path.join(pred_dir, filename))
             by_answer_type.append(get_performance_by_answer_type(answer_data, probetype))
-            if probetype == "probeOR":
+            if probetype == "probeOR" or probetype == "probeOR2":
                 or_inclusive_exclusive.append(get_or_inclusive_exclusive_results(answer_data, probetype))
 
     res_by_answer_type = pd.concat(by_answer_type)
@@ -56,8 +56,11 @@ def analyse_results(probetype, pred_dir, res_dir):
 def main():
     args = get_args()
     #os.makedirs(args.res_dir, exist_ok=True)
-    analyse_results("probeAND", args.pred_dir, args.res_dir)
-    analyse_results("probeOR", args.pred_dir, args.res_dir)
+    #analyse_results("probeAND", args.pred_dir, args.res_dir)
+    #analyse_results("probeOR", args.pred_dir, args.res_dir)
+    analyse_results("probeAND2", args.pred_dir, args.res_dir)
+    analyse_results("probeOR2", args.pred_dir, args.res_dir)
+
 
 if __name__ == "__main__":
     main()

@@ -42,10 +42,28 @@ class ProbePreprocessor(Preprocesser):
 
         return {"instances": instances, "images": images, "train": train}
 
+    '''
+    Reads data in datasetFilename, and creates json dictionary.
+    If instancesFilename exists, restore dictionary from this file.
+    Otherwise, save created dictionary to instancesFilename.
+    '''
+    def readData(self, datasetFilename, instancesFilename, train):
+        # data extraction
+        datasetReader = {
+            "CLEVR": self.readCLEVR,
+            "CLEVRCHILDES": self.readCLEVR,
+            "CLEVRnoANDnoEQUAL": self.readCLEVR,
+            "CLEVR10AND10EQUAL": self.readCLEVR,
+            "CLEVRnoORnoEQUAL": self.readCLEVR,
+            "NLVR": self.readNLVR
+        }
+
+        return datasetReader[config.dataset](datasetFilename, instancesFilename, train)
+
 
     # Adding probeX datasets
     def readDataset(self, suffix = "", hasTrain = True):
-        dataset = {"train": None, "evalTrain": None, "val": None, "test": None, "probeAND": None, "probeOR": None, "probeMORE": None, "probeLESS": None, "probeBEHIND": None, "probeFRONT": None, "probeSAME": None}
+        dataset = {"train": None, "evalTrain": None, "val": None, "test": None, "probeAND": None, "probeOR": None, "probeMORE": None, "probeLESS": None, "probeBEHIND": None, "probeFRONT": None, "probeSAME": None, "probeAND2":None, "probeOR2":None}
         if hasTrain:
             dataset["train"] = self.readTier("train" + suffix, train = True)
         dataset["val"] = self.readTier("val" + suffix, train = False)
@@ -57,6 +75,8 @@ class ProbePreprocessor(Preprocesser):
         dataset["probeBEHIND"] = self.readTier("probeBEHIND" + suffix, train = False)
         dataset["probeFRONT"] = self.readTier("probeFRONT" + suffix, train = False)
         dataset["probeSAME"] = self.readTier("probeSAME" + suffix, train = False)
+        dataset["probeAND2"] = self.readTier("probeAND2" + suffix, train = False)
+        dataset["probeOR2"] = self.readTier("probeOR2" + suffix, train = False)
 
         if hasTrain:
             dataset["evalTrain"] = {}
@@ -76,7 +96,7 @@ class ProbePreprocessor(Preprocesser):
                      "onlyChain": config.vOnlyChain, "filterOp": config.vFilterOp}
 
         filters = {"train": filterTrain, "evalTrain": filterTrain,
-                   "val": filterVal, "test": filterDefault, "probeAND": filterDefault, "probeOR": filterDefault, "probeMORE": filterDefault, "probeLESS": filterDefault, "probeBEHIND": filterDefault, "probeFRONT": filterDefault, "probeSAME": filterDefault}
+                   "val": filterVal, "test": filterDefault, "probeAND": filterDefault, "probeOR": filterDefault, "probeMORE": filterDefault, "probeLESS": filterDefault, "probeBEHIND": filterDefault, "probeFRONT": filterDefault, "probeSAME": filterDefault, "probeAND2": filterDefault, "probeOR2": filterDefault}
 
         if filterKey is None:
             fltr = filterDefault
@@ -103,7 +123,7 @@ class ProbePreprocessor(Preprocesser):
 
         # run on subset of the data. If 0 then use all data
         num = config.trainedNum if train else config.testedNum
-        if filterKey in {"probeAND", "probeOR", "probeMORE", "probeLESS", "probeBEHIND", "probeFRONT", "probeSAME"}:
+        if filterKey in {"probeAND", "probeOR", "probeMORE", "probeLESS", "probeBEHIND", "probeFRONT", "probeSAME", "probeAND2", "probeOR2"}:
             num = 0
         # retainVal = True to retain same sample of validation across runs
         if (not train) and (not config.retainVal):

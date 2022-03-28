@@ -1,0 +1,1 @@
+[{"text":"Are the <M> <N> and the <M1> <N1> the same <P>?", "params": [{"type": "Modifier", "name": "<M>"}, {"type": "Noun", "name": "<N>"}, {"type": "Modifier", "name": "<M1>"}, {"type": "Noun", "name": "<N1>"}, {"type": "Property", "name":"<P>"}], "contraint":[], "probe_type":"SAME2"}]

@@ -61,12 +61,15 @@ class Config(object):
     def dataFile(self, filename):
         return os.path.join(self.dataPath, filename)
 
+    def imagedataFile(self, filename):
+        return os.path.join(self.imagedataPath, filename)
+
     def generatedFile(self, filename):
         return self.dataFile(self.generatedPrefix + filename)
 
     datasetFile     = lambda self, tier: self.dataFile(self.datasetFilename.format(tier = tier))
     imagesIdsFile   = lambda self, tier: self.dataFile(self.imgIdsFilename.format(tier = tier)) #
-    imagesFile      = lambda self, tier: self.dataFile(self.imagesFilename.format(tier = tier))
+    imagesFile      = lambda self, tier: self.imagedataFile(self.imagesFilename.format(tier = tier))
     instancesFile   = lambda self, tier: self.generatedFile(self.instancesFilename.format(tier = tier))
 
     questionDictFile    = lambda self: self.generatedFile(self.questionDictFilename)
@@ -129,7 +132,7 @@ def parseArgs():
     parser.add_argument("--expName",        default = "experiment", type = str,    help = "experiment name")
 
     # data files
-    parser.add_argument("--dataset",         default = "CLEVR", choices = ["CLEVR", "NLVR"], type = str) #
+    parser.add_argument("--dataset",         default = "CLEVR", choices = ["CLEVR", "NLVR", "CLEVRCHILDES", "CLEVRnoANDnoEQUAL", "CLEVR10AND10EQUAL", "CLEVRnoORnoEQUAL"], type = str) #
     parser.add_argument("--dataBasedir",     default = "../../data", type = str,            help = "data base directory") # /jagupard14/scr1/dorarad/
     parser.add_argument("--generatedPrefix", default = "gennew", type = str,           help = "prefix for generated data files")
     parser.add_argument("--featureType",     default = "norm_128x32", type = str,   help = "features type") #
@@ -427,6 +430,7 @@ def parseArgs():
 
 def configCLEVR():
     config.dataPath = "{dataBasedir}/CLEVR_v1/data".format(dataBasedir = config.dataBasedir)
+    config.imagedataPath = "{dataBasedir}/CLEVR_v1/data".format(dataBasedir = config.dataBasedir)
     config.datasetFilename = "CLEVR_{tier}_questions.json"
     config.wordVectorsFile = "./CLEVR_v1/data/glove/glove.6B.{dim}d.txt".format(dim = config.wrdEmbDim) #
 
@@ -465,8 +469,51 @@ def configNLVR():
         size = config.featureType.split("_")[-1].split("x")
         config.imageDims = [int(size[1]) / stridesOverall, int(size[0]) / stridesOverall, 3]
 
+######## EP: adding dataset configs for subsampled CLEVR datasets
+def configCLEVRCHILDES():
+    config.dataPath = "{dataBasedir}/CLEVR_CHILDESfreq/data".format(dataBasedir = config.dataBasedir)
+    config.imagedataPath = "{dataBasedir}/CLEVR_CHILDESfreq/data".format(dataBasedir = config.dataBasedir)
+    config.datasetFilename = "CLEVR_{tier}_questions.json"
+    config.wordVectorsFile = "./CLEVR_v1/data/glove/glove.6B.{dim}d.txt".format(dim = config.wrdEmbDim) #
+    config.imageDims = [14, 14, 1024]
+    config.programLims = [5, 10, 15, 20]
+    config.questionLims = [10, 15, 20, 25]
+
+def configCLEVRnoANDnoEQUAL():
+    config.dataPath = "{dataBasedir}/CLEVR_noANDnoEQUAL/data".format(dataBasedir = config.dataBasedir)
+    config.imagedataPath = "{dataBasedir}/CLEVR_CHILDESfreq/data".format(dataBasedir = config.dataBasedir)
+    config.datasetFilename = "CLEVR_{tier}_questions.json"
+    config.wordVectorsFile = "./CLEVR_v1/data/glove/glove.6B.{dim}d.txt".format(dim = config.wrdEmbDim) #
+    config.imageDims = [14, 14, 1024]
+    config.programLims = [5, 10, 15, 20]
+    config.questionLims = [10, 15, 20, 25]
+
+def configCLEVR10AND10EQUAL():
+    config.dataPath = "{dataBasedir}/CLEVR_10AND10EQUAL/data".format(dataBasedir = config.dataBasedir)
+    config.imagedataPath = "{dataBasedir}/CLEVR_CHILDESfreq/data".format(dataBasedir = config.dataBasedir)
+    config.datasetFilename = "CLEVR_{tier}_questions.json"
+    config.wordVectorsFile = "./CLEVR_v1/data/glove/glove.6B.{dim}d.txt".format(dim = config.wrdEmbDim) #
+    config.imageDims = [14, 14, 1024]
+    config.programLims = [5, 10, 15, 20]
+    config.questionLims = [10, 15, 20, 25]
+
+def configCLEVRnoORnoEQUAL():
+    config.dataPath = "{dataBasedir}/CLEVR_noORnoEQUAL/data".format(dataBasedir = config.dataBasedir)
+    config.imagedataPath = "{dataBasedir}/CLEVR_CHILDESfreq/data".format(dataBasedir = config.dataBasedir)
+    config.datasetFilename = "CLEVR_{tier}_questions.json"
+    config.wordVectorsFile = "./CLEVR_v1/data/glove/glove.6B.{dim}d.txt".format(dim = config.wrdEmbDim) #
+    config.imageDims = [14, 14, 1024]
+    config.programLims = [5, 10, 15, 20]
+    config.questionLims = [10, 15, 20, 25]
+
+
+
 ## dataset specific configs
 loadDatasetConfig = {
     "CLEVR": configCLEVR,
-    "NLVR": configNLVR
+    "NLVR": configNLVR,
+    "CLEVRCHILDES": configCLEVRCHILDES,
+    "CLEVRnoANDnoEQUAL": configCLEVRnoANDnoEQUAL,
+    "CLEVR10AND10EQUAL": configCLEVR10AND10EQUAL,
+    "CLEVRnoORnoEQUAL": configCLEVRnoORnoEQUAL
 }

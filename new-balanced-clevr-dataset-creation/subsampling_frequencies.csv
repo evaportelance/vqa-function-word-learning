@@ -1,0 +1,3 @@
+corpus,total_token,total_probe_counts,and_count,or_count,more_count,less_count,behind_count,front_count,same_count
+CHLDES,16062386,271723,217497,22975,23406,212,2954,756,3923
+CLEVR,12868670,819389,81506,63214,11570,11851,147409,147506,356333

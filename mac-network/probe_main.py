@@ -27,9 +27,6 @@ from collections import defaultdict
 from main import writePreds, setSession, setSavers, chooseTrainingData, runEvaluation, improveEnough, better, trimData, getLength, getBatches, openImageFiles, closeImageFiles, loadImageBatch, loadImageBatches, alternateData, initStats, updateStats, statsToStr, printTierResults, printDatasetResults, lastLoggedEpoch
 
 
-SEED = 1
-
-
 # Writes log header to file
 def logInit():
     with open(config.logFile(), "a+") as outFile:
@@ -38,7 +35,7 @@ def logInit():
         if config.evalTrain:
             headers += ["evalTrainAcc", "evalTrainLoss"]
         headers += ["time", "lr"]
-        headers += ["ANDprobeAcc", "ORprobeAcc", "MOREprobeAcc", "LESSprobeAcc", "BEHINDprobeAcc", "FRONTprobeAcc", "SAMEprobeAcc"]
+        headers += ["ANDprobeAcc", "ORprobeAcc", "MOREprobeAcc", "LESSprobeAcc", "BEHINDprobeAcc", "FRONTprobeAcc", "SAMEprobeAcc", "AND2probeAcc", "OR2probeAcc"]
 
         writelist(outFile, headers)
         # lr assumed to be last
@@ -49,7 +46,7 @@ def probelogInit():
     with open(probelogfile, "a+") as outFile:
         writeline(outFile, config.expName)
         headers = ["epoch", "batchNum"]
-        headers += ["ANDprobeAcc", "ORprobeAcc", "MOREprobeAcc", "LESSprobeAcc", "BEHINDprobeAcc", "FRONTprobeAcc", "SAMEprobeAcc"]
+        headers += ["ANDprobeAcc", "ORprobeAcc", "MOREprobeAcc", "LESSprobeAcc", "BEHINDprobeAcc", "FRONTprobeAcc", "SAMEprobeAcc", "AND2probeAcc", "OR2probeAcc"]
 
         writelist(outFile, headers)
     return probelogfile
@@ -64,7 +61,8 @@ def logRecord(epoch, epochTime, lr, trainRes, evalRes, evalProbeRes):
         record += [evalProbeRes["probeAND"]["acc"], evalProbeRes["probeOR"]["acc"], evalProbeRes["probeMORE"]["acc"], evalProbeRes["probeLESS"]["acc"],
         evalProbeRes["probeBEHIND"]["acc"],
         evalProbeRes["probeFRONT"]["acc"],
-        evalProbeRes["probeSAME"]["acc"]]
+        evalProbeRes["probeSAME"]["acc"],
+        evalProbeRes["probeAND2"]["acc"], evalProbeRes["probeOR2"]["acc"]]
 
         writelist(outFile, record)
 
@@ -81,6 +79,8 @@ def printProbeDatasetResults(trainRes, evalRes, evalProbeRes):
     printTierResults("BEHIND Probe", evalProbeRes["probeBEHIND"], "red")
     printTierResults("FRONT Probe", evalProbeRes["probeFRONT"], "red")
     printTierResults("SAME Probe", evalProbeRes["probeSAME"], "red")
+    printTierResults("AND2 Probe", evalProbeRes["probeAND2"], "red")
+    printTierResults("OR2 Probe", evalProbeRes["probeOR2"], "red")
 
 
 def writeProbePreds(preprocessor, evalRes, epoch = 0, batchNum = 0):
@@ -91,6 +91,8 @@ def writeProbePreds(preprocessor, evalRes, epoch = 0, batchNum = 0):
     preprocessor.writeProbePreds(evalRes["probeBEHIND"], "probeBEHIND", epoch, batchNum)
     preprocessor.writeProbePreds(evalRes["probeFRONT"], "probeFRONT", epoch, batchNum)
     preprocessor.writeProbePreds(evalRes["probeSAME"], "probeSAME", epoch, batchNum)
+    preprocessor.writeProbePreds(evalRes["probeAND2"], "probeAND2", epoch, batchNum)
+    preprocessor.writeProbePreds(evalRes["probeOR2"], "probeOR2", epoch, batchNum)
 
 def loadWeights(sess, saver, init):
     if config.restoreEpoch > 0 or config.restore:
@@ -114,7 +116,7 @@ def loadWeights(sess, saver, init):
 def runProbeEvaluation(sess, model, data, epoch, probelogfile, batchNum = 0, getAtt = None):
     if getAtt is None:
         getAtt = config.getAtt
-    res = {"probeAND": None, "probeOR": None, "probeMORE": None, "probeLESS": None, "probeBEHIND": None, "probeFRONT": None, "probeSAME": None}
+    res = {"probeAND": None, "probeOR": None, "probeMORE": None, "probeLESS": None, "probeBEHIND": None, "probeFRONT": None, "probeSAME": None,"probeAND2": None, "probeOR2": None }
 
     if data is not None:
         res["probeAND"] = runProbeEpoch(sess, model, data["probeAND"], train = False, epoch = epoch, getAtt = getAtt)
@@ -124,10 +126,12 @@ def runProbeEvaluation(sess, model, data, epoch, probelogfile, batchNum = 0, get
         res["probeBEHIND"] = runProbeEpoch(sess, model, data["probeBEHIND"], train = False, epoch = epoch, getAtt = getAtt)
         res["probeFRONT"] = runProbeEpoch(sess, model, data["probeFRONT"], train = False, epoch = epoch, getAtt = getAtt)
         res["probeSAME"] = runProbeEpoch(sess, model, data["probeSAME"], train = False, epoch = epoch, getAtt = getAtt)
+        res["probeAND2"] = runProbeEpoch(sess, model, data["probeAND2"], train = False, epoch = epoch, getAtt = getAtt)
+        res["probeOR2"] = runProbeEpoch(sess, model, data["probeOR2"], train = False, epoch = epoch, getAtt = getAtt)
 
         with open(probelogfile, "a+") as outFile:
             record = [epoch, batchNum]
-            record += [res["probeAND"]["acc"], res["probeOR"]["acc"], res["probeMORE"]["acc"], res["probeLESS"]["acc"], res["probeBEHIND"]["acc"], res["probeFRONT"]["acc"], res["probeSAME"]["acc"]]
+            record += [res["probeAND"]["acc"], res["probeOR"]["acc"], res["probeMORE"]["acc"], res["probeLESS"]["acc"], res["probeBEHIND"]["acc"], res["probeFRONT"]["acc"], res["probeSAME"]["acc"], res["probeAND2"]["acc"], res["probeOR2"]["acc"]]
             writelist(outFile, record)
     return res
 
@@ -263,12 +267,12 @@ def runEpoch(sess, model, data, train, epoch, probelogfile = None, preprocessor 
                 saver.save(sess, config.weightsFile(epoch))
 
                     # run probe eval every so many batches when training
-        if train:
-            if epoch < 3 and (batchNum+1) % 1000 == 0:
-                print(bold("Running probes evaluations..."))
-                evalProbeRes = runProbeEvaluation(sess, model, data["main"], epoch = epoch, probelogfile = probelogfile, batchNum= batchNum)
-                print(bold("Writing probes predictions..."))
-                writeProbePreds(preprocessor, evalProbeRes, epoch, batchNum)
+        # if train:
+        #     if epoch < 3 and (batchNum+1) % 2000 == 0:
+        #         print(bold("Running probes evaluations..."))
+        #         evalProbeRes = runProbeEvaluation(sess, model, data["main"], epoch = epoch, probelogfile = probelogfile, batchNum= batchNum)
+        #         print(bold("Writing probes predictions..."))
+        #         writeProbePreds(preprocessor, evalProbeRes, epoch, batchNum)
 
         # calle
         if calle is not None:
@@ -334,6 +338,8 @@ def runProbeEpoch(sess, model, data, train, epoch, getAtt = False):
 
 
 def set_random_seed():
+    SEED = int(config.expName[-1])
+    print("SEED", SEED)
     tf.random.set_seed(SEED)
     random.seed(SEED)
     np.random.seed(SEED)
@@ -356,10 +362,11 @@ Trains/evaluates the model:
    final results!
 '''
 def main():
-    set_random_seed()
-
     with open(config.configFile(), "a+") as outFile:
         json.dump(vars(config), outFile)
+
+    # set random seeds
+    set_random_seed()
 
     # set gpus
     if config.gpus != "":
