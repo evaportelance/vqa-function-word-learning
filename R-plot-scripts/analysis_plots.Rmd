@@ -297,26 +297,30 @@ p
 #ggsave("exp2_and2_or2_answertype_sd.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
 
 p = ggplot(mean_and_or_res |> filter(probetype == "probeOR2"), aes(x=epoch, y=mean_acc))+
-  geom_ribbon(aes(ymin = (mean_acc - sd_acc), ymax = (mean_acc + sd_acc), fill = answer), alpha=0.3)+
+  #geom_ribbon(aes(ymin = (mean_acc - sd_acc), ymax = (mean_acc + sd_acc), fill = answer), alpha=0.3)+
   geom_line(aes(color=answer), size = 1.3)+
   scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
   scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  ylim(0,1)+
   labs(x= "Epoch", y="Mean accuracy", color = "Answer type", fill = "Answer type") +
   theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
 p
 
-#ggsave("exp3_or2_answertype_sd.jpeg", plot=p, device="jpeg", width = 5.3, height = 3.5, units="in")
+#ggsave("exp1_or2_answertype.jpeg", plot=p, device="jpeg", width = 5.3, height = 3.5, units="in")
+#ggsave("exp3_or2_answertype.jpeg", plot=p, device="jpeg", width = 5.3, height = 3.5, units="in")
 
 p = ggplot(mean_and_or_res |> filter(probetype == "probeAND2"), aes(x=epoch, y=mean_acc))+
-  geom_ribbon(aes(ymin = (mean_acc - sd_acc), ymax = (mean_acc + sd_acc), fill = answer), alpha=0.3)+
+  #geom_ribbon(aes(ymin = (mean_acc - sd_acc), ymax = (mean_acc + sd_acc), fill = answer), alpha=0.3)+
   geom_line(aes(color=answer), size = 1.3)+
   scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
   scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  ylim(0,1)+
   labs(x= "Epoch", y="Mean accuracy", color = "Answer type", fill = "Answer type") +
   theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
 p
 
-#ggsave("exp3_and2_answertype_sd.jpeg", plot=p, device="jpeg", width = 5.3, height = 3.5, units="in")
+#ggsave("exp1_and2_answertype.jpeg", plot=p, device="jpeg", width = 5.3, height = 3.5, units="in")
+#ggsave("exp3_and2_answertype.jpeg", plot=p, device="jpeg", width = 5.3, height = 3.5, units="in")
 
 
 p = ggplot(mean_and_or_res, aes(x=epoch, y=mean_correct))+
@@ -374,6 +378,8 @@ get_or_amb_acc <- function(result_dir){
 
 or_amb_res <- result_dirs |> map(get_or_amb_acc) |> reduce(rbind)
 
+ggplot(or_amb_res |> filter(answer_type == "prop_exclusive"), aes(x=epoch, y=proportion)) + geom_line(aes(color=as.factor(seed)))
+
 mean_or_amb_res <- or_amb_res |> filter(batchNum == 0) |>
   group_by(probetype, epoch, answer_type) |>
   summarise(mean_prop = mean(proportion), sd_prop = sd(proportion))
@@ -386,10 +392,22 @@ p= ggplot(mean_or_amb_res, aes(x=epoch, y=mean_prop, fill=answer_type)) +
   labs(x= "Epoch", y="Proportion", color = "OR interpretation", fill = "OR interpretation") +
   theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
 
+
+p= ggplot(mean_or_amb_res |> filter(answer_type == "prop_exclusive"), aes(x=epoch, y=mean_prop, fill=answer_type)) +
+  geom_ribbon(aes(ymin = 0, ymax = (mean_prop)), alpha=0.7)+
+  #geom_line(aes(color=answer_type), size=1.3)+
+  scale_color_manual(labels=c("exclusive"), values=c("#8c6bb1"))+
+  scale_fill_manual(labels=c("exclusive"), values=c("#8c6bb1"))+
+  ylim(0,0.8)+
+  labs(x= "Epoch", y="Proportion", color = "OR interpretation", fill = "OR interpretation") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
 p
 #ggsave("exp1_or2_inclusive_exclusive_sd.jpeg", plot=p, device="jpeg", width = 5.6, height = 3.5, units="in")
 #ggsave("exp2_or2_inclusive_exclusive_sd.jpeg", plot=p, device="jpeg", width = 5.6, height = 3.5, units="in")
 #ggsave("exp3_or2_inclusive_exclusive_sd.jpeg", plot=p, device="jpeg", width = 5.6, height = 3.5, units="in")
+#ggsave("exp1_or2_exclusive.jpeg", plot=p, device="jpeg", width = 5.6, height = 3.5, units="in")
+ggsave("exp2_or2_exclusive.jpeg", plot=p, device="jpeg", width = 5.6, height = 3.5, units="in")
 ```
 
 #### BEHIND - FRONT by answer type
