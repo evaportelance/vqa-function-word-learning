@@ -302,7 +302,7 @@ def create_probe(template):
 def get_probes_questions():
     # load in question templates and possible parameter values for questions
     #with open("probe_templates.json") as templates:
-    with open('probe_templates_ANDOR2_only.json') as templates:
+    with open('probe_templates.json') as templates:
         question_templates = json.load(templates)
 
     with Pool() as pool:
