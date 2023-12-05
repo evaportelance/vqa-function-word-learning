@@ -10,7 +10,7 @@ More probe questions and partitions can also be created by using the scripts and
 
 ## Model 
 
-All pretrained models are available for download at [this OSF project repository](https://osf.io/4h5py/?view_only=3cf3d23c2f274f1487615ecfc9151d22).
+All pretrained models are available for download at [this OneDrive link](https://mcgill-my.sharepoint.com/:f:/g/personal/eva_portelance_mcgill_ca/EmmRTyeHKppHuViLHA9yi6kBvAka3Wta69UokYm0tYviyA?e=Y8NMW1).
 
 The model code is available in the folder [./model and evaluations/mac-network](./model%20and%20evaluations/mac-network/). This folder contains a custom modified version of the MAC model by [Hudson & Manning (2018)](https://github.com/stanfordnlp/mac-network).
 
