@@ -452,6 +452,8 @@ p
 ggsave("exp3_or2_exclusive_comp.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
 ```
 
+
+
 #### BEHIND - FRONT by answer type
 ```{r}
 get_behind_front_acc <- function(result_dir){

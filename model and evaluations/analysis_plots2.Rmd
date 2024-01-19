@@ -1,0 +1,2131 @@
+---
+title: "Analysis2"
+author: "Eva Portelance"
+date: "12/5/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(ggplot2)
+library(glue)
+library(ggpubr)
+library(stringr)
+library(RColorBrewer)
+
+theme_set(theme_bw(base_size = 16,
+  base_family = "Times New Roman"))
+```
+
+
+# Analyses by probe type
+
+## AND2 and OR2 plots
+
+### Experiment 1 : Trained on CLEVR
+
+```{r, echo=FALSE}
+result_main_dir = "../../data/results/experiment1_clevr"
+result_dirs <- list.dirs(result_main_dir,recursive = FALSE)
+```
+
+#### Get accuracies
+```{r, include=FALSE}
+probe.labs <- c("AND", "OR")
+names(probe.labs) <- c("probeAND2", "probeOR2")
+
+get_and_or_acc <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  and_filename = paste(result_dir, "probeAND2_res_by_answer_type.csv", sep="/")
+  or_filename = paste(result_dir, "probeOR2_res_by_answer_type.csv", sep="/")
+  and_acc <- read_csv(and_filename)
+  or_acc <- read_csv(or_filename)
+  and_or_acc <- rbind(and_acc, or_acc)
+  
+  and_or_acc <- and_or_acc |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+    group_by(probetype, epoch, batchNum) |>
+    mutate(overall_total = sum(n_total), overall_correct = sum(n_correct)) |>
+    mutate(seed = seed)
+  
+  return(and_or_acc)
+}
+
+
+and_or_res <- result_dirs |> map(get_and_or_acc) |> reduce(rbind)
+
+mean_and_or_res <- and_or_res |> filter(batchNum == 0) |>
+  group_by(probetype, epoch, answer) |>
+  summarise(mean_acc = mean(prop_correct), sd_acc = sd(prop_correct), mean_correct= mean(overall_correct/overall_total), sd_correct = sd(overall_correct/overall_total))
+```
+
+#### Get F1 scores (NEW)
+```{r, include=FALSE}
+get_f1_answers <- function(res){
+  res_f1 <- res |>filter(batchNum == 0) |> 
+  group_by(probetype, epoch, seed, answer) |>
+  mutate(n_wrong = n_total - n_correct) |>
+  unique() |>
+  pivot_wider(names_from = answer, values_from = c(n_total, n_correct, n_wrong)) |>
+  ungroup() |>
+  group_by(probetype, epoch, seed) |>
+  summarize(n_total_yes = sum(n_total_yes, na.rm = TRUE), true_pos_yes = sum(n_correct_yes, na.rm = TRUE), false_pos_yes = sum(n_wrong_no, na.rm = TRUE), n_total_no = sum(n_total_no, na.rm = TRUE), true_pos_no = sum(n_correct_no, na.rm = TRUE), false_pos_no = sum(n_wrong_yes, na.rm = TRUE)) |>
+  mutate(f1_score = (2*(true_pos_yes+true_pos_no))/((n_total_yes+n_total_no)+(true_pos_yes+true_pos_no)+(false_pos_yes+false_pos_no))) |>
+  mutate(f1_yes = (2*true_pos_yes)/(n_total_yes+true_pos_yes+false_pos_yes),
+         f1_no = (2*true_pos_no)/(n_total_no+true_pos_no+false_pos_no)) |>
+  select(probetype, epoch, seed, f1_score, f1_yes, f1_no) |>
+  pivot_longer(cols=c(f1_yes, f1_no),
+               names_to = "answer",
+               names_prefix = "f1_",
+               values_to = "f1_answer")
+  return(res_f1)
+}
+
+and_or_res_f1 <- get_f1_answers(and_or_res)
+mean_and_or_res_f1 <- and_or_res_f1 |> ungroup() |>
+  group_by(probetype, epoch, answer) |>
+  summarise(mean_f1_score = mean(f1_score), sd_f1_score = sd(f1_score),
+            mean_f1_answer = mean(f1_answer), sd_f1_answer = sd(f1_answer))
+```
+
+#### Plot accuracy overall by probe type
+```{r, echo=FALSE}
+p = ggplot(mean_and_or_res, aes(x=epoch, y=mean_correct))+
+  geom_ribbon(aes(ymin = (mean_correct - sd_correct), ymax = (mean_correct + sd_correct), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  scale_color_manual(labels=c("AND", "OR"), values=c("#225ea8", "#cc4c02"))+
+  scale_fill_manual(labels=c("AND", "OR"), values=c("#225ea8", "#cc4c02"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+  
+p  
+#ggsave("exp1_and2_or2_overall100.jpeg", plot=p, device="jpeg", width = 5, height = 3.5, units="in")
+#ggsave("exp2_and2_or2_overall100.jpeg", plot=p, device="jpeg", width = 5, height = 3.5, units="in")
+```
+
+
+#### Plot accuracy by answer type
+
+```{r, echo=FALSE}
+p = ggplot(mean_and_or_res, aes(x=epoch, y=mean_acc))+
+  #geom_ribbon(aes(ymin = (mean_acc - sd_acc), ymax = (mean_acc + sd_acc), fill = answer), alpha=0.3)+
+  geom_line(aes(color=answer), size = 1.3)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+
+#ggsave("exp1_and2_or2_answertype_sd.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+```
+
+#### Plot F1 overall by probe type (NEW)
+```{r, echo=FALSE}
+p = ggplot(mean_and_or_res_f1, aes(x=epoch, y=mean_f1_score))+
+  geom_ribbon(aes(ymin = (mean_f1_score - sd_f1_score), ymax = (mean_f1_score + sd_f1_score), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  scale_color_manual(labels=c("AND", "OR"), values=c("#225ea8", "#cc4c02"))+
+  scale_fill_manual(labels=c("AND", "OR"), values=c("#225ea8", "#cc4c02"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+  
+p  
+
+ggsave("exp1_and2_or2_overall_f1.jpeg", plot=p, device="jpeg", width = 5, height = 3.5, units="in")
+```
+
+#### Plot F1 by answer type (NEW)
+```{r, echo=FALSE}
+p = ggplot(mean_and_or_res_f1, aes(x=epoch, y=mean_f1_answer))+
+  geom_ribbon(aes(ymin = (mean_f1_answer - sd_f1_answer), ymax = (mean_f1_answer + sd_f1_answer), fill = answer), alpha=0.3)+
+  geom_line(aes(color=answer), size = 1.3)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+ggsave("exp1_and2_or2_answertype_f1.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+```
+
+
+#### Plot exclusive/inclusive OR2 proportion
+```{r, echo=FALSE}
+get_or_amb_acc <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  filename = paste(result_dir, "probeOR2_res_or_inclusive_exclusive.csv", sep="/")
+  or_amb_acc <- read_csv(filename)
+  
+  or_amb_acc <- or_amb_acc |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+  pivot_longer(cols = c(prop_inclusive, prop_exclusive), names_to="answer_type", values_to="proportion") |>
+    mutate(seed = seed)
+  
+  return(or_amb_acc)
+}
+
+or_amb_res <- result_dirs |> map(get_or_amb_acc) |> reduce(rbind)
+mean_or_amb_res <- or_amb_res |> filter(batchNum == 0) |>
+  group_by(probetype, epoch, answer_type) |>
+  summarise(mean_prop = mean(proportion), sd_prop = sd(proportion)) |>
+  filter(epoch != 0)
+
+p= ggplot(mean_or_amb_res|> filter(answer_type == "prop_exclusive"), aes(x=epoch, y=mean_prop, fill=answer_type)) +
+  geom_ribbon(aes(ymin = 0, ymax = mean_prop), alpha=0.5)+
+  geom_hline(yintercept=0.5, linetype="dashed", alpha = 0.6)+
+  scale_color_manual(labels=c("exclusive", "inclusive"), values=c("#8c6bb1", "#41ae76"))+
+  scale_fill_manual(labels=c("exclusive", "inclusive"), values=c("#8c6bb1", "#41ae76"))+
+  scale_y_continuous(limits = c(0, 1))+
+  labs(x= "Epoch", y="Proportion", color = "OR interpretation", fill = "OR interpretation") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+
+ggsave("exp1_or2_exclusive.jpeg", plot=p, device="jpeg", width = 5.6, height = 3.5, units="in")
+
+```
+
+
+### Experiment 2 : Trained only on one alternative
+
+```{r, echo=FALSE}
+result_main_dir = "../../data/results/experiment2_alternatives"
+result_main_dirs <- list.dirs(result_main_dir,recursive = FALSE)
+result_dirs_no_or <- as_tibble(result_main_dirs) |> filter(grepl("noor", value))
+result_dirs_no_or <- result_dirs_no_or$value
+
+result_dirs_no_and_noequal<- as_tibble(result_main_dirs) |> filter(grepl("noand", value))
+result_dirs_no_and_noequal <- result_dirs_no_and_noequal$value
+```
+
+#### plots with accuracies
+```{r, echo=FALSE}
+and_or_res <- result_dirs |> map(get_and_or_acc) |> reduce(rbind)
+and_exp1 <- and_or_res |> filter(probetype == "probeAND2")
+and_exp1 <- and_exp1 |> mutate(experiment = "With alternative")
+or_exp1 <- and_or_res |> filter(probetype == "probeOR2")
+or_exp1 <- or_exp1 |> mutate(experiment = "With alternative")
+
+or_amb_res <- result_dirs |> map(get_or_amb_acc) |> reduce(rbind)
+or_amb_exp1 <- or_amb_res |> filter(probetype == "probeOR2")
+or_amb_exp1 <- or_amb_exp1 |> mutate(experiment = "With alternative")
+
+
+#then get experiment 3 data OR
+and_or_res <- result_dirs_no_and_noequal |> map(get_and_or_acc) |> reduce(rbind)
+or_exp3 <- and_or_res |> filter(probetype == "probeOR2")
+or_exp3 <- or_exp3 |> mutate(experiment = "Without alternative")
+
+or_amb_res <- result_dirs_no_and_noequal |> map(get_or_amb_acc) |> reduce(rbind)
+or_amb_exp3 <- or_amb_res |> filter(probetype == "probeOR2")
+or_amb_exp3 <- or_amb_exp3 |> mutate(experiment = "Without alternative")
+
+# then get experiment 3 data AND
+and_or_res <- result_dirs_no_or |> map(get_and_or_acc) |> reduce(rbind)
+and_exp3 <- and_or_res |> filter(probetype == "probeAND2")
+and_exp3 <- and_exp3 |> mutate(experiment = "Without alternative")
+
+# combine:
+comb_results <- rbind(and_exp1, or_exp1, and_exp3, or_exp3)
+comb_or_amb <- rbind(or_amb_exp1, or_amb_exp3)
+
+mean_comb_results <- comb_results |> filter(batchNum == 0) |>
+  group_by(experiment, probetype, epoch, answer) |>
+  summarise(mean_acc = mean(prop_correct), sd_acc = sd(prop_correct), mean_correct= mean(overall_correct/overall_total), sd_correct = sd(overall_correct/overall_total))
+
+mean_comb_or_amb <- comb_or_amb |> filter(batchNum == 0) |>
+  group_by(experiment, probetype, epoch, answer_type) |>
+  summarise(mean_prop = mean(proportion), sd_prop = sd(proportion))|>
+  filter(epoch != 0)
+
+probe.labs <- c("AND", "OR")
+names(probe.labs) <- c("probeAND2", "probeOR2")
+
+## Comparative plots for AND
+
+p = ggplot(mean_comb_results |> filter(probetype == "probeAND2"), aes(x=epoch, y=mean_correct))+
+  geom_ribbon(aes(ymin = (mean_correct - sd_correct), ymax = (mean_correct + sd_correct), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  facet_wrap(vars(experiment))+
+  scale_color_manual(labels=c("AND"), values=c("#225ea8"))+
+  scale_fill_manual(labels=c("AND"), values=c("#225ea8"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+  
+p
+#ggsave("exp3_and2_overall100_comp.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+
+p = ggplot(mean_comb_results |> filter(probetype == "probeAND2"), aes(x=epoch, y=mean_acc))+
+  #geom_ribbon(aes(ymin = (mean_acc - sd_acc), ymax = (mean_acc + sd_acc), fill = answer), alpha=0.3)+
+  geom_line(aes(color=answer), size = 1.3)+
+  facet_wrap(vars(experiment))+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+p
+
+#ggsave("exp3_and2_answertype100_comp.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+
+
+## Comparative plots for OR
+
+p = ggplot(mean_comb_results |> filter(probetype == "probeOR2"), aes(x=epoch, y=mean_correct))+
+  geom_ribbon(aes(ymin = (mean_correct - sd_correct), ymax = (mean_correct + sd_correct), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  facet_wrap(vars(experiment))+
+  scale_color_manual(labels=c("OR"), values=c("#cc4c02"))+
+  scale_fill_manual(labels=c("OR"), values=c("#cc4c02"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+  
+p
+#ggsave("exp3_or2_overall100_comp.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+
+p = ggplot(mean_comb_results |> filter(probetype == "probeOR2"), aes(x=epoch, y=mean_acc))+
+  #geom_ribbon(aes(ymin = (mean_acc - sd_acc), ymax = (mean_acc + sd_acc), fill = answer), alpha=0.3)+
+  geom_line(aes(color=answer), size = 1.3)+
+  facet_wrap(vars(experiment))+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+p
+
+#ggsave("exp3_or2_answertype100_comp.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+
+
+p= ggplot(mean_comb_or_amb |> filter(answer_type == "prop_exclusive") |>
+  filter(epoch != 0), aes(x=epoch, y=mean_prop, fill=answer_type)) +
+  geom_ribbon(aes(ymin = 0, ymax = mean_prop), alpha=0.5)+
+  facet_wrap(vars(experiment))+
+  geom_hline(yintercept=0.5, linetype="dashed", alpha = 0.6)+
+  scale_color_manual(labels=c("exclusive", "inclusive"), values=c("#8c6bb1", "#41ae76"))+
+  scale_fill_manual(labels=c("exclusive", "inclusive"), values=c("#8c6bb1", "#41ae76"))+
+  scale_y_continuous(limits = c(0, 1))+
+  labs(x= "Epoch", y="Proportion", color = "OR interpretation", fill = "OR interpretation") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+
+ggsave("exp2_or2_exclusive_comp.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+```
+
+#### plots with F1 (NEW)
+
+```{r, echo=FALSE}
+# get experiment 1 data
+and_or_res <- result_dirs |> map(get_and_or_acc) |> reduce(rbind)
+and_or_res <- get_f1_answers(and_or_res)
+and_exp1 <- and_or_res |> filter(probetype == "probeAND2")
+and_exp1 <- and_exp1 |> mutate(experiment = "With alternative")
+or_exp1 <- and_or_res |> filter(probetype == "probeOR2")
+or_exp1 <- or_exp1 |> mutate(experiment = "With alternative")
+
+# then get experiment 3 data OR
+and_or_res <- result_dirs_no_and_noequal |> map(get_and_or_acc) |> reduce(rbind)
+and_or_res <- get_f1_answers(and_or_res)
+or_exp3 <- and_or_res |> filter(probetype == "probeOR2")
+or_exp3 <- or_exp3 |> mutate(experiment = "Without alternative")
+
+# then get experiment 3 data AND
+and_or_res <- result_dirs_no_or |> map(get_and_or_acc) |> reduce(rbind)
+and_or_res <- get_f1_answers(and_or_res)
+and_exp3 <- and_or_res |> filter(probetype == "probeAND2")
+and_exp3 <- and_exp3 |> mutate(experiment = "Without alternative")
+
+# combine:
+comb_results_f1 <- rbind(and_exp1, or_exp1, and_exp3, or_exp3)
+
+mean_comb_results_f1 <- comb_results_f1 |> ungroup() |>
+  group_by(probetype, epoch, answer, experiment) |>
+  summarise(mean_f1_score = mean(f1_score), sd_f1_score = sd(f1_score),
+            mean_f1_answer = mean(f1_answer), sd_f1_answer = sd(f1_answer))
+
+probe.labs <- c("AND", "OR")
+names(probe.labs) <- c("probeAND2", "probeOR2")
+
+## Comparative plots for AND
+
+p = ggplot(mean_comb_results_f1 |> filter(probetype == "probeAND2"), aes(x=epoch, y=mean_f1_score))+
+  geom_ribbon(aes(ymin = (mean_f1_score - sd_f1_score), ymax = (mean_f1_score + sd_f1_score), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  facet_wrap(vars(experiment))+
+  scale_color_manual(labels=c("AND"), values=c("#225ea8"))+
+  scale_fill_manual(labels=c("AND"), values=c("#225ea8"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+  
+p
+ggsave("exp2_and2_overall_comp_f1.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+
+p = ggplot(mean_comb_results_f1 |> filter(probetype == "probeAND2"), aes(x=epoch, y=mean_f1_answer))+
+  geom_ribbon(aes(ymin = (mean_f1_answer - sd_f1_answer), ymax = (mean_f1_answer + sd_f1_answer), fill = answer), alpha=0.3)+
+  geom_line(aes(color=answer), size = 1.3)+
+  facet_wrap(vars(experiment))+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+p
+ggsave("exp2_and2_answertype_comp_f1.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+
+## Comparative plots for OR
+
+p = ggplot(mean_comb_results_f1 |> filter(probetype == "probeOR2"), aes(x=epoch, y=mean_f1_score))+
+  geom_ribbon(aes(ymin = (mean_f1_score - sd_f1_score), ymax = (mean_f1_score + sd_f1_score), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  facet_wrap(vars(experiment))+
+  scale_color_manual(labels=c("OR"), values=c("#cc4c02"))+
+  scale_fill_manual(labels=c("OR"), values=c("#cc4c02"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+  
+p
+ggsave("exp2_or2_overall_comp_f1.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+
+
+p = ggplot(mean_comb_results_f1 |> filter(probetype == "probeOR2"), aes(x=epoch, y=mean_f1_answer))+
+  geom_ribbon(aes(ymin = (mean_f1_answer - sd_f1_answer), ymax = (mean_f1_answer + sd_f1_answer), fill = answer), alpha=0.3)+
+  geom_line(aes(color=answer), size = 1.3)+
+  facet_wrap(vars(experiment))+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+p
+ggsave("exp2_or2_answertype_comp_f1.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+```
+
+
+### Experiment 3 : Trained on subsampled CLEVR with childes frequencies
+
+```{r, echo=FALSE}
+result_main_dir = "../../data/results/experiment3_childesfreq"
+result_dirs <- list.dirs(result_main_dir,recursive = FALSE)
+```
+
+#### Get accuracies
+```{r, include=FALSE}
+probe.labs <- c("AND", "OR")
+names(probe.labs) <- c("probeAND2", "probeOR2")
+
+get_and_or_acc <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  and_filename = paste(result_dir, "probeAND2_res_by_answer_type.csv", sep="/")
+  or_filename = paste(result_dir, "probeOR2_res_by_answer_type.csv", sep="/")
+  and_acc <- read_csv(and_filename)
+  or_acc <- read_csv(or_filename)
+  and_or_acc <- rbind(and_acc, or_acc)
+  
+  and_or_acc <- and_or_acc |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+    group_by(probetype, epoch, batchNum) |>
+    mutate(overall_total = sum(n_total), overall_correct = sum(n_correct)) |>
+    mutate(seed = seed)
+  
+  return(and_or_acc)
+}
+
+
+and_or_res <- result_dirs |> map(get_and_or_acc) |> reduce(rbind)
+
+mean_and_or_res <- and_or_res |> filter(batchNum == 0) |>
+  group_by(probetype, epoch, answer) |>
+  summarise(mean_acc = mean(prop_correct), sd_acc = sd(prop_correct), mean_correct= mean(overall_correct/overall_total), sd_correct = sd(overall_correct/overall_total))
+```
+
+#### Get F1 scores (NEW)
+```{r, include=FALSE}
+get_f1_answers <- function(res){
+  res_f1 <- res |>filter(batchNum == 0) |> 
+  group_by(probetype, epoch, seed, answer) |>
+  mutate(n_wrong = n_total - n_correct) |>
+  unique() |>
+  pivot_wider(names_from = answer, values_from = c(n_total, n_correct, n_wrong)) |>
+  ungroup() |>
+  group_by(probetype, epoch, seed) |>
+  summarize(n_total_yes = sum(n_total_yes, na.rm = TRUE), true_pos_yes = sum(n_correct_yes, na.rm = TRUE), false_pos_yes = sum(n_wrong_no, na.rm = TRUE), n_total_no = sum(n_total_no, na.rm = TRUE), true_pos_no = sum(n_correct_no, na.rm = TRUE), false_pos_no = sum(n_wrong_yes, na.rm = TRUE)) |>
+  mutate(f1_score = (2*(true_pos_yes+true_pos_no))/((n_total_yes+n_total_no)+(true_pos_yes+true_pos_no)+(false_pos_yes+false_pos_no))) |>
+  mutate(f1_yes = (2*true_pos_yes)/(n_total_yes+true_pos_yes+false_pos_yes),
+         f1_no = (2*true_pos_no)/(n_total_no+true_pos_no+false_pos_no)) |>
+  select(probetype, epoch, seed, f1_score, f1_yes, f1_no) |>
+  pivot_longer(cols=c(f1_yes, f1_no),
+               names_to = "answer",
+               names_prefix = "f1_",
+               values_to = "f1_answer")
+  return(res_f1)
+}
+
+and_or_res_f1 <- get_f1_answers(and_or_res)
+mean_and_or_res_f1_3 <- and_or_res_f1 |> ungroup() |>
+  group_by(probetype, epoch, answer) |>
+  summarise(mean_f1_score = mean(f1_score), sd_f1_score = sd(f1_score),
+            mean_f1_answer = mean(f1_answer), sd_f1_answer = sd(f1_answer))
+```
+
+#### Plot accuracy overall by probe type
+```{r, echo=FALSE}
+p = ggplot(mean_and_or_res, aes(x=epoch, y=mean_correct))+
+  geom_ribbon(aes(ymin = (mean_correct - sd_correct), ymax = (mean_correct + sd_correct), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  scale_color_manual(labels=c("AND", "OR"), values=c("#225ea8", "#cc4c02"))+
+  scale_fill_manual(labels=c("AND", "OR"), values=c("#225ea8", "#cc4c02"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+  
+p  
+#ggsave("exp1_and2_or2_overall100.jpeg", plot=p, device="jpeg", width = 5, height = 3.5, units="in")
+#ggsave("exp2_and2_or2_overall100.jpeg", plot=p, device="jpeg", width = 5, height = 3.5, units="in")
+```
+
+#### Plot accuracy by answer type
+
+```{r, echo=FALSE}
+p = ggplot(mean_and_or_res, aes(x=epoch, y=mean_acc))+
+  #geom_ribbon(aes(ymin = (mean_acc - sd_acc), ymax = (mean_acc + sd_acc), fill = answer), alpha=0.3)+
+  geom_line(aes(color=answer), size = 1.3)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+#ggsave("exp1_and2_or2_answertype_sd.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+#ggsave("exp2_and2_or2_answertype_sd.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+```
+
+#### Plot F1 overall by probe type (NEW)
+```{r, echo=FALSE}
+p = ggplot(mean_and_or_res_f1_3, aes(x=epoch, y=mean_f1_score))+
+  geom_ribbon(aes(ymin = (mean_f1_score - sd_f1_score), ymax = (mean_f1_score + sd_f1_score), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  scale_color_manual(labels=c("AND", "OR"), values=c("#225ea8", "#cc4c02"))+
+  scale_fill_manual(labels=c("AND", "OR"), values=c("#225ea8", "#cc4c02"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+  
+p
+ggsave("exp3_and2_or2_overall1_f1.jpeg", plot=p, device="jpeg", width = 5, height = 3.5, units="in")
+```
+
+#### Plot F1 by answer type (NEW)
+```{r, echo=FALSE}
+p = ggplot(mean_and_or_res_f1_3, aes(x=epoch, y=mean_f1_answer))+
+  geom_ribbon(aes(ymin = (mean_f1_answer - sd_f1_answer), ymax = (mean_f1_answer + sd_f1_answer), fill = answer), alpha=0.3)+
+  geom_line(aes(color=answer), size = 1.3)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+ggsave("exp3_and2_or2_answertype_f1.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+```
+
+#### Plot exclusive/inclusive OR2 proportion
+```{r, echo=FALSE}
+get_or_amb_acc <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  filename = paste(result_dir, "probeOR2_res_or_inclusive_exclusive.csv", sep="/")
+  or_amb_acc <- read_csv(filename)
+  
+  or_amb_acc <- or_amb_acc |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+  pivot_longer(cols = c(prop_inclusive, prop_exclusive), names_to="answer_type", values_to="proportion") |>
+    mutate(seed = seed)
+  
+  return(or_amb_acc)
+}
+
+or_amb_res <- result_dirs |> map(get_or_amb_acc) |> reduce(rbind)
+mean_or_amb_res <- or_amb_res |> filter(batchNum == 0) |>
+  group_by(probetype, epoch, answer_type) |>
+  summarise(mean_prop = mean(proportion), sd_prop = sd(proportion))|>
+  filter(epoch != 0)
+
+p= ggplot(mean_or_amb_res |> filter(answer_type == "prop_exclusive"), aes(x=epoch, y=mean_prop, fill=answer_type)) +
+  geom_ribbon(aes(ymin = 0, ymax = mean_prop), alpha=0.5)+
+  geom_hline(yintercept=0.5, linetype="dashed", alpha = 0.6)+
+  scale_color_manual(labels=c("exclusive", "inclusive"), values=c("#8c6bb1", "#41ae76"))+
+  scale_fill_manual(labels=c("exclusive", "inclusive"), values=c("#8c6bb1", "#41ae76"))+
+  scale_y_continuous(limits = c(0, 1))+
+  labs(x= "Epoch", y="Proportion", color = "OR interpretation", fill = "OR interpretation") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+ggsave("exp3_or2_exclusive.jpeg", plot=p, device="jpeg", width = 5.6, height = 3.5, units="in")
+```
+
+#### Plot F1 comparison Exp 1 and Exp 3
+```{r}
+mean_and_or_res_f1_1 <- mean_and_or_res_f1 |>
+  mutate(experiment = "With CLEVR frequencies")
+mean_and_or_res_f1_comp <- mean_and_or_res_f1_3 |>
+  mutate(experiment = "With CHILDES frequencies") |>
+  rbind(mean_and_or_res_f1_1)
+
+p = ggplot(transform(mean_and_or_res_f1_comp,
+      experiment=factor(experiment,levels=c("With CLEVR frequencies","With CHILDES frequencies"))), aes(x=epoch, y=mean_f1_score))+
+  geom_ribbon(aes(ymin = (mean_f1_score - sd_f1_score), ymax = (mean_f1_score + sd_f1_score), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  facet_wrap(vars(experiment))+
+  scale_color_manual(labels=c("AND", "OR"), values=c("#225ea8", "#cc4c02"))+
+  scale_fill_manual(labels=c("AND", "OR"), values=c("#225ea8", "#cc4c02"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+  
+p
+ggsave("exp3_and2_or2_overall_comp_f1.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+
+```
+
+## BEHIND and FRONT plots
+
+### Experiment 1 : Trained on CLEVR
+
+```{r, echo=FALSE}
+result_main_dir = "../../data/results/experiment1_clevr"
+result_dirs <- list.dirs(result_main_dir,recursive = FALSE)
+```
+
+#### Get accuracies
+```{r, include=FALSE}
+probe.labs <- c("BEHIND", "IN FRONT OF")
+names(probe.labs) <- c("probeBEHIND", "probeFRONT")
+
+get_behind_front_acc <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  behind_filename = paste(result_dir, "probeBEHIND_res_by_answer_type.csv", sep="/")
+  front_filename = paste(result_dir, "probeFRONT_res_by_answer_type.csv", sep="/")
+  behind_acc <- read_csv(behind_filename)
+  front_acc <- read_csv(front_filename)
+  behind_front_acc <- rbind(behind_acc, front_acc)
+  
+  behind_front_acc <- behind_front_acc |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+  group_by(probetype, epoch, batchNum) |>
+  mutate(overall_total = sum(n_total), overall_correct = sum(n_correct)) |>
+    mutate(seed = seed)
+  
+  return(behind_front_acc)
+}
+
+behind_front_res <- result_dirs |> map(get_behind_front_acc) |> reduce(rbind)
+
+mean_behind_front_res <- behind_front_res |> filter(batchNum == 0) |>
+  group_by(probetype, epoch, answer) |>
+  summarise(mean_acc = mean(prop_correct), sd_acc = sd(prop_correct), mean_correct= mean(overall_correct/overall_total), sd_correct = sd(overall_correct/overall_total))
+```
+
+#### Get F1 scores (NEW)
+```{r, include=FALSE}
+behind_front_res_f1 <- get_f1_answers(behind_front_res)
+mean_behind_front_res_f1 <- behind_front_res_f1 |> ungroup() |>
+  group_by(probetype, epoch, answer) |>
+  summarise(mean_f1_score = mean(f1_score), sd_f1_score = sd(f1_score),
+            mean_f1_answer = mean(f1_answer), sd_f1_answer = sd(f1_answer))
+```
+
+#### Plot accuracy overall by probe type
+```{r, echo=FALSE}
+p = ggplot(mean_behind_front_res, aes(x=epoch, y=mean_correct))+
+  geom_ribbon(aes(ymin = (mean_correct - sd_correct), ymax = (mean_correct + sd_correct), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  scale_color_manual(labels=c("BEHIND", "IN FRONT OF"), values=c("#225ea8", "#cc4c02"))+
+  scale_fill_manual(labels=c("BEHIND", "IN FRONT OF"), values=c("#225ea8", "#cc4c02"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+#ggplot(behind_front_res, aes(x=epoch, y=overall_correct, color = as.factor(seed)))+
+#  geom_line(size=1.3) +
+#  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+#  labs(x= "Epoch", y="accuracy", color = "seed", linetype = "Probe type") +
+#  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+#ggsave("exp1_behind_front_overall.jpeg", plot=p, device="jpeg", width = 5.7, height = 3.5, units="in")
+#ggsave("exp2_behind_front_overall100.jpeg", plot=p, device="jpeg", width = 5.7, height = 3.5, units="in")
+
+```
+
+#### Plot accuracy by answer type
+```{r, echo=FALSE}
+
+p= ggplot(mean_behind_front_res, aes(x=epoch, y=mean_acc))+
+  geom_ribbon(aes(ymin = (mean_acc - sd_acc), ymax = ifelse((mean_acc + sd_acc) > 1, 1, (mean_acc + sd_acc)), fill = answer), alpha=0.3)+
+  geom_line(aes(color=answer), size = 1.3)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+
+ggplot(behind_front_res, aes(x=epoch, y=prop_correct))+
+  geom_line(aes(color=answer), size = 1.3)+
+  facet_grid(rows=vars(seed), cols=vars(probetype))+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+
+p
+#ggsave("exp1_behind_front_answertype100.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+#ggsave("exp2_behind_front_answertype100.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+
+```
+
+#### Plot accuracy by distance between referents
+```{r, echo=FALSE}
+
+get_behind_front_bydist <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  behind_filename = paste(result_dir, "probeBEHIND_res_by_round_dist.csv", sep="/")
+  front_filename = paste(result_dir, "probeFRONT_res_by_round_dist.csv", sep="/")
+  behind_round_dist <- read_csv(behind_filename)
+  front_round_dist <- read_csv(front_filename)
+  behind_front_round_dist <- rbind(behind_round_dist, front_round_dist)
+
+  behind_front_round_dist <- behind_front_round_dist |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+  group_by(probetype, epoch, batchNum, batches, dist) |>
+  mutate(n_by_dist = sum(counts)) |>
+  mutate(correct = ifelse(answer==prediction, "true", "false")) |>
+  group_by(probetype, epoch, batchNum, batches, dist, correct) |>
+  mutate(n_correct_by_dist = sum(counts))
+  
+  behind_front_round_dist_sum <- behind_front_round_dist |> 
+  filter(correct == "true") |>
+  mutate(prop_correct = n_correct_by_dist/n_by_dist) |>
+  select(c(probetype, epoch, batches, dist, prop_correct)) |>
+  unique() |>
+    mutate(seed=seed)
+  
+  return(behind_front_round_dist_sum)
+}
+
+behind_front_dist_res <- result_dirs |> map(get_behind_front_bydist) |> reduce(rbind)
+
+mean_behind_front_dist_res <- behind_front_dist_res |> filter(batchNum == 0) |>
+  group_by(probetype, epoch, dist) |>
+  summarise(mean_acc = mean(prop_correct), sd_acc = sd(prop_correct))
+
+plot_data <- mean_behind_front_dist_res |> filter(epoch > 0) |> 
+  mutate(dist = as.factor(dist))
+
+cols <- c("1" = "#08306b", "2" = "#08519c", "3" = "#2171b5", "4" = "#4292c6", "5" = "#6baed6", "6" = "#9ecae1", "7" = "#c6dbef", "8" = "#deebf7")
+#"8" = "#deebf7"
+
+p = ggplot(plot_data , aes(x=epoch, y=mean_acc, color=dist))+
+  geom_line(size=1.3) +
+  scale_color_manual(values=cols)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Distance", fill = "Distance") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+#ggsave("exp1_behind_front_bydistance.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+#ggsave("exp2_behind_front_bydistance.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+  
+```
+
+#### Plot F1 overall by probe type (NEW)
+```{r, echo=FALSE}
+p = ggplot(mean_behind_front_res_f1, aes(x=epoch, y=mean_f1_score))+
+  geom_ribbon(aes(ymin = (mean_f1_score - sd_f1_score), ymax = (mean_f1_score + sd_f1_score), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  scale_color_manual(labels=c("BEHIND", "IN FRONT OF"), values=c("#225ea8", "#cc4c02"))+
+  scale_fill_manual(labels=c("BEHIND", "IN FRONT OF"), values=c("#225ea8", "#cc4c02"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+  
+p  
+ggsave("exp1_behind_front_overall_f1.jpeg", plot=p, device="jpeg", width = 5.7, height = 3.5, units="in")
+```
+
+#### Plot F1 by answer type (NEW)
+```{r, echo=FALSE}
+p = ggplot(mean_behind_front_res_f1, aes(x=epoch, y=mean_f1_answer))+
+  geom_ribbon(aes(ymin = (mean_f1_answer - sd_f1_answer), ymax = ifelse((mean_f1_answer + sd_f1_answer) > 1, 1, (mean_f1_answer + sd_f1_answer)), fill = answer), alpha=0.3)+
+  geom_line(aes(color=answer), size = 1.3)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+ggsave("exp1_behind_front_answertype_f1.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+```
+
+#### Plot F1 by distance between referents (NEW)
+```{r, echo=FALSE}
+
+get_f1_behind_front_bydist <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  behind_filename = paste(result_dir, "probeBEHIND_res_by_round_dist.csv", sep="/")
+  front_filename = paste(result_dir, "probeFRONT_res_by_round_dist.csv", sep="/")
+  behind_round_dist <- read_csv(behind_filename)
+  front_round_dist <- read_csv(front_filename)
+  behind_front_round_dist <- rbind(behind_round_dist, front_round_dist)
+
+  behind_front_round_dist_f1 <- behind_front_round_dist |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+  group_by(probetype, epoch, batchNum, batches, dist) |>
+  mutate(n_by_dist = sum(counts)) |>
+  mutate(correct = ifelse(answer==prediction, "true", "false")) |>
+  group_by(probetype, epoch, batchNum, batches, dist, correct, answer) |>
+  mutate(true_pos_yes = ifelse(answer=="yes" && prediction==answer, sum(counts), NA),
+         true_pos_no = ifelse(answer=="no" && prediction==answer, sum(counts), NA),
+         false_neg_yes = ifelse(answer=="yes" && prediction!=answer, sum(counts), NA),
+         false_neg_no = ifelse(answer=="no" && prediction!=answer, sum(counts), NA)
+         ) |> ungroup() |>
+  group_by(probetype, epoch, batchNum, batches, dist, prediction, answer) |>
+  mutate(false_pos_yes = ifelse(prediction=="yes" && answer!="yes", sum(counts), NA),
+         false_pos_no = ifelse(prediction=="no" && answer!="no", sum(counts), NA)) |> ungroup() |>
+  select(-c(prediction, counts, correct, answer)) |> 
+  group_by(probetype, epoch, batchNum, batches, dist) |> unique() |>
+  mutate_at(vars(true_pos_yes,true_pos_no, false_neg_yes, false_neg_no, false_pos_yes, false_pos_no), ~replace(., is.na(.), 0)) |>
+  summarize(true_pos_yes = sum(true_pos_yes, na.rm = TRUE), true_pos_no = sum(true_pos_no, na.rm = TRUE), false_neg_yes = sum(false_neg_yes, na.rm = TRUE), false_neg_no = sum(false_neg_no, na.rm = TRUE), false_pos_yes = sum(false_pos_yes, na.rm = TRUE), false_pos_no = sum(false_pos_no, na.rm = TRUE)) |>
+  mutate(f1_score = (2*(true_pos_yes+true_pos_no))/(2*(true_pos_yes+true_pos_no)+(false_neg_yes+false_neg_no)+(false_pos_yes+false_pos_no))) |>
+  mutate(f1_yes = (2*true_pos_yes)/(2*true_pos_yes+false_neg_yes+false_pos_yes),
+         f1_no = (2*true_pos_no)/(2*true_pos_no+true_pos_no+false_pos_no)) |>
+  select(probetype, epoch,batchNum, batches, dist, f1_score, f1_yes, f1_no) |>
+  pivot_longer(cols=c(f1_yes, f1_no),
+               names_to = "answer",
+               names_prefix = "f1_",
+               values_to = "f1_answer")|>
+  unique() |>
+  mutate(seed=seed)
+  
+  return(behind_front_round_dist_f1)
+}
+
+behind_front_dist_res_f1 <-  result_dirs |> map(get_f1_behind_front_bydist) |> reduce(rbind)
+mean_behind_front_dist_res_f1 <- behind_front_dist_res_f1 |> filter(batchNum == 0) |>
+  group_by(probetype, epoch, dist) |>
+  mutate_at(vars(f1_score, f1_answer), ~replace(., is.na(.), 0.0)) |>
+  summarise(mean_f1_score = mean(f1_score), sd_f1_score = sd(f1_score),
+            mean_f1_answer = mean(f1_answer), sd_f1_answer = sd(f1_answer))
+
+plot_data <- mean_behind_front_dist_res_f1 |> filter(epoch > 0) |> 
+  mutate(dist = as.factor(dist))
+
+cols <- c("1" = "#08306b", "2" = "#08519c", "3" = "#2171b5", "4" = "#4292c6", "5" = "#6baed6", "6" = "#9ecae1", "7" = "#c6dbef", "8" = "#deebf7")
+#"8" = "#deebf7"
+
+p = ggplot(plot_data , aes(x=epoch, y=mean_f1_score, color=dist))+
+  geom_line(size=1.3) +
+  scale_color_manual(values=cols)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Distance", fill = "Distance") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+ggsave("exp1_behind_front_bydistance_f1.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+  
+```
+
+
+### Experiment 3 : Trained on subsampled CLEVR with childes frequencies
+
+```{r, echo=FALSE}
+result_main_dir = "../../data/results/experiment3_childesfreq"
+result_dirs <- list.dirs(result_main_dir,recursive = FALSE)
+```
+
+#### Get accuracies
+```{r, include=FALSE}
+probe.labs <- c("BEHIND", "IN FRONT OF")
+names(probe.labs) <- c("probeBEHIND", "probeFRONT")
+
+get_behind_front_acc <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  behind_filename = paste(result_dir, "probeBEHIND_res_by_answer_type.csv", sep="/")
+  front_filename = paste(result_dir, "probeFRONT_res_by_answer_type.csv", sep="/")
+  behind_acc <- read_csv(behind_filename)
+  front_acc <- read_csv(front_filename)
+  behind_front_acc <- rbind(behind_acc, front_acc)
+  
+  behind_front_acc <- behind_front_acc |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+  group_by(probetype, epoch, batchNum) |>
+  mutate(overall_total = sum(n_total), overall_correct = sum(n_correct)) |>
+    mutate(seed = seed)
+  
+  return(behind_front_acc)
+}
+
+behind_front_res <- result_dirs |> map(get_behind_front_acc) |> reduce(rbind)
+
+mean_behind_front_res <- behind_front_res |> filter(batchNum == 0) |>
+  group_by(probetype, epoch, answer) |>
+  summarise(mean_acc = mean(prop_correct), sd_acc = sd(prop_correct), mean_correct= mean(overall_correct/overall_total), sd_correct = sd(overall_correct/overall_total))
+```
+
+#### Get F1 scores (NEW)
+```{r, include=FALSE}
+behind_front_res_f1 <- get_f1_answers(behind_front_res)
+mean_behind_front_res_f1_3 <- behind_front_res_f1 |> ungroup() |>
+  group_by(probetype, epoch, answer) |>
+  summarise(mean_f1_score = mean(f1_score), sd_f1_score = sd(f1_score),
+            mean_f1_answer = mean(f1_answer), sd_f1_answer = sd(f1_answer))
+```
+
+#### Plot accuracy overall by probe type
+```{r, echo=FALSE}
+p = ggplot(mean_behind_front_res, aes(x=epoch, y=mean_correct))+
+  geom_ribbon(aes(ymin = (mean_correct - sd_correct), ymax = (mean_correct + sd_correct), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  scale_color_manual(labels=c("BEHIND", "IN FRONT OF"), values=c("#225ea8", "#cc4c02"))+
+  scale_fill_manual(labels=c("BEHIND", "IN FRONT OF"), values=c("#225ea8", "#cc4c02"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+#ggplot(behind_front_res, aes(x=epoch, y=overall_correct, color = as.factor(seed)))+
+#  geom_line(size=1.3) +
+#  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+#  labs(x= "Epoch", y="accuracy", color = "seed", linetype = "Probe type") +
+#  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+
+
+```
+
+#### Plot accuracy by answer type
+```{r, echo=FALSE}
+
+p= ggplot(mean_behind_front_res, aes(x=epoch, y=mean_acc))+
+  geom_ribbon(aes(ymin = (mean_acc - sd_acc), ymax = ifelse((mean_acc + sd_acc) > 1, 1, (mean_acc + sd_acc)), fill = answer), alpha=0.3)+
+  geom_line(aes(color=answer), size = 1.3)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+
+ggplot(behind_front_res, aes(x=epoch, y=prop_correct))+
+  geom_line(aes(color=answer), size = 1.3)+
+  facet_grid(rows=vars(seed), cols=vars(probetype))+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+
+p
+#ggsave("exp1_behind_front_answertype100.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+#ggsave("exp2_behind_front_answertype100.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+
+```
+
+#### Plot accuracy by distance between referents
+```{r, echo=FALSE}
+
+get_behind_front_bydist <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  behind_filename = paste(result_dir, "probeBEHIND_res_by_round_dist.csv", sep="/")
+  front_filename = paste(result_dir, "probeFRONT_res_by_round_dist.csv", sep="/")
+  behind_round_dist <- read_csv(behind_filename)
+  front_round_dist <- read_csv(front_filename)
+  behind_front_round_dist <- rbind(behind_round_dist, front_round_dist)
+
+  behind_front_round_dist <- behind_front_round_dist |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+  group_by(probetype, epoch, batchNum, batches, dist) |>
+  mutate(n_by_dist = sum(counts)) |>
+  mutate(correct = ifelse(answer==prediction, "true", "false")) |>
+  group_by(probetype, epoch, batchNum, batches, dist, correct) |>
+  mutate(n_correct_by_dist = sum(counts))
+  
+  behind_front_round_dist_sum <- behind_front_round_dist |> 
+  filter(correct == "true") |>
+  mutate(prop_correct = n_correct_by_dist/n_by_dist) |>
+  select(c(probetype, epoch, batches, dist, prop_correct)) |>
+  unique() |>
+    mutate(seed=seed)
+  
+  return(behind_front_round_dist_sum)
+}
+
+behind_front_dist_res <- result_dirs |> map(get_behind_front_bydist) |> reduce(rbind)
+
+mean_behind_front_dist_res <- behind_front_dist_res |> filter(batchNum == 0) |>
+  group_by(probetype, epoch, dist) |>
+  summarise(mean_acc = mean(prop_correct), sd_acc = sd(prop_correct))
+
+plot_data <- mean_behind_front_dist_res |> filter(epoch > 0) |> 
+  mutate(dist = as.factor(dist))
+
+cols <- c("1" = "#08306b", "2" = "#08519c", "3" = "#2171b5", "4" = "#4292c6", "5" = "#6baed6", "6" = "#9ecae1", "7" = "#c6dbef", "8" = "#deebf7")
+#"8" = "#deebf7"
+
+p = ggplot(plot_data , aes(x=epoch, y=mean_acc, color=dist))+
+  geom_line(size=1.3) +
+  scale_color_manual(values=cols)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Distance", fill = "Distance") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+#ggsave("exp1_behind_front_bydistance.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+#ggsave("exp2_behind_front_bydistance.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+  
+```
+
+#### Plot F1 overall by probe type (NEW)
+```{r, echo=FALSE}
+p = ggplot(mean_behind_front_res_f1_3, aes(x=epoch, y=mean_f1_score))+
+  geom_ribbon(aes(ymin = (mean_f1_score - sd_f1_score), ymax = (mean_f1_score + sd_f1_score), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  scale_color_manual(labels=c("BEHIND", "IN FRONT OF"), values=c("#225ea8", "#cc4c02"))+
+  scale_fill_manual(labels=c("BEHIND", "IN FRONT OF"), values=c("#225ea8", "#cc4c02"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+  
+p 
+ggsave("exp3_behind_front_overall_f1.jpeg", plot=p, device="jpeg", width = 5.7, height = 3.5, units="in")
+```
+
+#### Plot F1 by answer type (NEW)
+```{r, echo=FALSE}
+p = ggplot(mean_behind_front_res_f1_3, aes(x=epoch, y=mean_f1_answer))+
+  geom_ribbon(aes(ymin = (mean_f1_answer - sd_f1_answer), ymax = ifelse((mean_f1_answer + sd_f1_answer) > 1, 1, (mean_f1_answer + sd_f1_answer)), fill = answer), alpha=0.3)+
+  geom_line(aes(color=answer), size = 1.3)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+#ggsave("exp1_and2_or2_answertype_sd.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+#ggsave("exp2_and2_or2_answertype_sd.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+```
+
+#### Plot F1 by distance between referents (NEW)
+```{r, echo=FALSE}
+
+get_f1_behind_front_bydist <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  behind_filename = paste(result_dir, "probeBEHIND_res_by_round_dist.csv", sep="/")
+  front_filename = paste(result_dir, "probeFRONT_res_by_round_dist.csv", sep="/")
+  behind_round_dist <- read_csv(behind_filename)
+  front_round_dist <- read_csv(front_filename)
+  behind_front_round_dist <- rbind(behind_round_dist, front_round_dist)
+
+  behind_front_round_dist_f1 <- behind_front_round_dist |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+  group_by(probetype, epoch, batchNum, batches, dist) |>
+  mutate(n_by_dist = sum(counts)) |>
+  mutate(correct = ifelse(answer==prediction, "true", "false")) |>
+  group_by(probetype, epoch, batchNum, batches, dist, correct, answer) |>
+  mutate(true_pos_yes = ifelse(answer=="yes" && prediction==answer, sum(counts), NA),
+         true_pos_no = ifelse(answer=="no" && prediction==answer, sum(counts), NA),
+         false_neg_yes = ifelse(answer=="yes" && prediction!=answer, sum(counts), NA),
+         false_neg_no = ifelse(answer=="no" && prediction!=answer, sum(counts), NA)
+         ) |> ungroup() |>
+  group_by(probetype, epoch, batchNum, batches, dist, prediction, answer) |>
+  mutate(false_pos_yes = ifelse(prediction=="yes" && answer!="yes", sum(counts), NA),
+         false_pos_no = ifelse(prediction=="no" && answer!="no", sum(counts), NA)) |> ungroup() |>
+  select(-c(prediction, counts, correct, answer)) |> 
+  group_by(probetype, epoch, batchNum, batches, dist) |> unique() |>
+  mutate_at(vars(true_pos_yes,true_pos_no, false_neg_yes, false_neg_no, false_pos_yes, false_pos_no), ~replace(., is.na(.), 0)) |>
+  summarize(true_pos_yes = sum(true_pos_yes, na.rm = TRUE), true_pos_no = sum(true_pos_no, na.rm = TRUE), false_neg_yes = sum(false_neg_yes, na.rm = TRUE), false_neg_no = sum(false_neg_no, na.rm = TRUE), false_pos_yes = sum(false_pos_yes, na.rm = TRUE), false_pos_no = sum(false_pos_no, na.rm = TRUE)) |>
+  mutate(f1_score = (2*(true_pos_yes+true_pos_no))/(2*(true_pos_yes+true_pos_no)+(false_neg_yes+false_neg_no)+(false_pos_yes+false_pos_no))) |>
+  mutate(f1_yes = (2*true_pos_yes)/(2*true_pos_yes+false_neg_yes+false_pos_yes),
+         f1_no = (2*true_pos_no)/(2*true_pos_no+true_pos_no+false_pos_no)) |>
+  select(probetype, epoch,batchNum, batches, dist, f1_score, f1_yes, f1_no) |>
+  pivot_longer(cols=c(f1_yes, f1_no),
+               names_to = "answer",
+               names_prefix = "f1_",
+               values_to = "f1_answer")|>
+  unique() |>
+  mutate(seed=seed)
+  
+  return(behind_front_round_dist_f1)
+}
+
+behind_front_dist_res_f1 <-  result_dirs |> map(get_f1_behind_front_bydist) |> reduce(rbind)
+mean_behind_front_dist_res_f1 <- behind_front_dist_res_f1 |> filter(batchNum == 0) |>
+  group_by(probetype, epoch, dist) |>
+  mutate_at(vars(f1_score, f1_answer), ~replace(., is.na(.), 0.0)) |>
+  summarise(mean_f1_score = mean(f1_score), sd_f1_score = sd(f1_score),
+            mean_f1_answer = mean(f1_answer), sd_f1_answer = sd(f1_answer))
+
+plot_data <- mean_behind_front_dist_res_f1 |> filter(epoch > 0) |> 
+  mutate(dist = as.factor(dist))
+
+cols <- c("1" = "#08306b", "2" = "#08519c", "3" = "#2171b5", "4" = "#4292c6", "5" = "#6baed6", "6" = "#9ecae1", "7" = "#c6dbef", "8" = "#deebf7")
+#"8" = "#deebf7"
+
+p = ggplot(plot_data , aes(x=epoch, y=mean_f1_score, color=dist))+
+  geom_line(size=1.3) +
+  scale_color_manual(values=cols)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Distance", fill = "Distance") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+ggsave("exp3_behind_front_bydistance_f1.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+  
+```
+
+#### Plot F1 comparison Exp 1 and Exp 3
+```{r}
+mean_behind_front_res_f1_1 <- mean_behind_front_res_f1 |>
+  mutate(experiment = "With CLEVR frequencies")
+mean_behind_front_res_f1_comp <- mean_behind_front_res_f1_3 |>
+  mutate(experiment = "With CHILDES frequencies") |>
+  rbind(mean_behind_front_res_f1_1)
+
+p = ggplot(transform(mean_behind_front_res_f1_comp,
+      experiment=factor(experiment,levels=c("With CLEVR frequencies","With CHILDES frequencies"))), aes(x=epoch, y=mean_f1_score))+
+    geom_ribbon(aes(ymin = (mean_f1_score - sd_f1_score), ymax = (mean_f1_score + sd_f1_score), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  facet_wrap(vars(experiment))+
+  scale_color_manual(labels=c("BEHIND", "IN FRONT OF"), values=c("#225ea8", "#cc4c02"))+
+  scale_fill_manual(labels=c("BEHIND", "IN FRONT OF"), values=c("#225ea8", "#cc4c02"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+  
+p
+ggsave("exp3_behind_front_overall_comp_f1.jpeg", plot=p, device="jpeg", width = 9, height = 3.5, units="in")
+
+```
+
+
+
+## MORE and LESS plots
+
+### Experiment 1 : Trained on CLEVR
+
+```{r, echo=FALSE}
+result_main_dir = "../../data/results/experiment1_clevr"
+result_dirs <- list.dirs(result_main_dir,recursive = FALSE)
+```
+
+#### Get accuracies
+```{r, include=FALSE}
+probe.labs <- c("MORE", "FEWER")
+names(probe.labs) <- c("probeMORE", "probeLESS")
+
+get_more_less_acc <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  more_filename = paste(result_dir, "probeMORE_res_by_answer_type.csv", sep="/")
+  less_filename = paste(result_dir, "probeLESS_res_by_answer_type.csv", sep="/")
+  more_acc <- read_csv(more_filename)
+  less_acc <- read_csv(less_filename)
+  more_less_acc <- rbind(more_acc, less_acc)
+
+  more_less_acc <- more_less_acc |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+    group_by(probetype, epoch, batchNum) |>
+    mutate(overall_total = sum(n_total), overall_correct = sum(n_correct)) |>
+    mutate(seed = seed)
+  
+  return(more_less_acc)
+}
+
+more_less_res <- result_dirs |> map(get_more_less_acc) |> reduce(rbind)
+
+mean_more_less_res <- more_less_res |> filter(batchNum == 0) |>
+  group_by(probetype, epoch, answer) |>
+  summarise(mean_acc = mean(prop_correct), sd_acc = sd(prop_correct), mean_correct= mean(overall_correct/overall_total), sd_correct = sd(overall_correct/overall_total))
+```
+
+#### Get F1 scores (NEW)
+```{r, include=FALSE}
+
+more_less_res_f1 <- get_f1_answers(more_less_res)
+mean_more_less_res_f1 <- more_less_res_f1 |> ungroup() |>
+  group_by(probetype, epoch, answer) |>
+  summarise(mean_f1_score = mean(f1_score), sd_f1_score = sd(f1_score),
+            mean_f1_answer = mean(f1_answer), sd_f1_answer = sd(f1_answer))
+```
+
+#### Plot accuracy overall by probe type
+```{r, echo=FALSE}
+p= ggplot(mean_more_less_res, aes(x=epoch, y=mean_correct))+
+  geom_ribbon(aes(ymin = (mean_correct - sd_correct), ymax = (mean_correct + sd_correct), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3)+  
+  scale_color_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02","#225ea8"))+
+  scale_fill_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02", "#225ea8"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+#ggsave("exp1_more_fewer_overall100.jpeg", plot=p, device="jpeg", width = 5.1, height = 3.5, units="in")
+#ggsave("exp2_more_fewer_overall100.jpeg", plot=p, device="jpeg", width = 5.1, height = 3.5, units="in")
+#ggsave("exp3_more_fewer_overall100.jpeg", plot=p, device="jpeg", width = 5.1, height = 3.5, units="in")
+
+# For LESS probe tends to just answer yes a disproportionate amount of times.
+# maybe get proportion of yes/no in answers vs predictions
+# Also tends to say yes a lot for MORE probe though to a lesser extent.
+
+#ggplot(more_less_res, aes(x=epoch, y=overall_correct, color = as.factor(seed)))+
+#  geom_line(size=1.3) +
+#  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+#  labs(x= "Epoch", y="accuracy", color = "seed", linetype = "Probe type") +
+#  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+
+```
+
+#### Plot accuracy by answer type
+```{r, echo=FALSE}
+
+p = ggplot(mean_more_less_res, aes(x=epoch, y=mean_acc))+
+  #geom_ribbon(aes(ymin = (mean_acc - sd_acc), ymax = (mean_acc + sd_acc), fill = answer), alpha=0.3)+
+  geom_line(aes(color=answer), size = 1.3)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+#ggsave("exp1_more_fewer_answertype100.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+#ggsave("exp2_more_fewer_answertype100.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+#ggsave("exp3_more_fewer_answertype100.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+
+```
+
+#### Plot accuracy by number difference between referents
+```{r, echo=FALSE}
+
+get_more_less_bydiff <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  more_filename = paste(result_dir, "probeMORE_res_by_num_diff.csv", sep="/") 
+  less_filename = paste(result_dir, "probeLESS_res_by_num_diff.csv", sep="/")
+  more_num_diff <- read_csv(more_filename)
+  less_num_diff <- read_csv(less_filename)
+  more_less_num_diff <- rbind(more_num_diff, less_num_diff)
+
+  more_less_num_diff_ <- more_less_num_diff |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+    group_by(probetype, epoch, batchNum, batches, num_diff) |>
+    mutate(n_by_diff = sum(counts)) |>
+    mutate(correct = ifelse(answer==prediction, "true", "false")) |>
+    group_by(probetype, epoch, batchNum, batches, num_diff, correct) |>
+    mutate(n_correct_by_diff = sum(counts))
+
+  more_less_num_diff_sum <- more_less_num_diff_ |> 
+    filter(correct == "true") |>
+    mutate(prop_correct = n_correct_by_diff/n_by_diff) |>
+    select(c(probetype, epoch, batches, num_diff, prop_correct)) |>
+    unique() |>
+    mutate(seed = seed)
+  
+  return(more_less_num_diff_sum)
+}
+
+more_less_diff_res <- result_dirs |> map(get_more_less_bydiff) |> reduce(rbind)
+
+mean_more_less_diff_res <- more_less_diff_res |> filter(batchNum == 0) |>
+  group_by(probetype, epoch, num_diff) |>
+  summarise(mean_acc = mean(prop_correct), sd_acc = sd(prop_correct))
+
+plot_data <- mean_more_less_diff_res |> mutate(num_diff= factor(abs(num_diff), levels = c("0", "1", "2", "3", "4", "5", "6", "7", "8"))) |> group_by(probetype, epoch, num_diff) |>
+  summarise(mean_acc = mean(mean_acc))
+
+cols <- c("0"="#FDC926FF", "1"="#FA9E3BFF", "2"="#ED7953FF", "3"="#D8576BFF", "4"="#BD3786FF", "5"="#9C179EFF", "6"="#7301A8FF", "7"="#47039FFF", "8"="#0D0887FF")
+
+p = ggplot(plot_data , aes(x=epoch, y=mean_acc, color=num_diff))+
+  geom_line(size=1.3) +
+  scale_color_manual(values=cols)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Absolute difference", fill = "Absolute difference") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+#ggsave("exp1_more_fewer_byabsolutedist.jpeg", plot=p, device="jpeg", width = 8.5, height = 3.5, units="in")
+#ggsave("exp2_more_fewer_byabsolutedist100.jpeg", plot=p, device="jpeg", width = 8.5, height = 3.5, units="in")
+#ggsave("exp3_more_fewer_byabsolutedist100.jpeg", plot=p, device="jpeg", width = 8.5, height = 3.5, units="in")
+  
+```
+
+#### Plot accuracy overall by probe type excluding distance=0 cases
+```{r, echo=FALSE}
+## Clearly the num difference is super important and where the model struggles is when there is no difference it says there is almost automatically! This may be because the clevr training set also includes equal_than, similar to more_than/less_than type questions which lead the model to trink that zero difference is a yes answer.
+
+#What is performance like if we remove the zero cases
+
+get_more_less_acc_no0 <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  more_filename = paste(result_dir, "probeMORE_res_by_num_diff.csv", sep="/") 
+  less_filename = paste(result_dir, "probeLESS_res_by_num_diff.csv", sep="/")
+  more_num_diff <- read_csv(more_filename)
+  less_num_diff <- read_csv(less_filename)
+  more_less_num_diff <- rbind(more_num_diff, less_num_diff)
+  
+  more_less_acc_no0 <- more_less_num_diff |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+    filter(num_diff != 0) |>
+    mutate(correct = ifelse(answer==prediction, "true", "false")) |>
+    group_by(probetype, epoch, batchNum, batches) |>
+    mutate(n_total = sum(counts)) |>
+    group_by(probetype, epoch, batchNum, batches, correct) |>
+    mutate(n_correct = sum(counts),
+          prop_correct = n_correct/n_total) |>
+    ungroup() |>
+    filter(correct == "true") |>
+    select(probetype, epoch, batchNum, batches, prop_correct) |>
+    unique() |>
+    mutate(seed = seed)
+  
+  return(more_less_acc_no0)
+}
+
+more_less_res_no0 <- result_dirs |> map(get_more_less_acc_no0) |> reduce(rbind)
+
+mean_more_less_res_no0 <- more_less_res_no0 |> filter(batchNum == 0) |>
+  group_by(probetype, epoch) |>
+  summarise(mean_acc= mean(prop_correct), sd_acc = sd(prop_correct))
+
+
+p = ggplot(mean_more_less_res_no0, aes(x=epoch, y=mean_acc))+
+  geom_ribbon(aes(ymin = (mean_acc - sd_acc), ymax = (mean_acc + sd_acc), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  scale_color_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02","#225ea8"))+
+  scale_fill_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02", "#225ea8"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+#ggsave("exp1_more_fewer_overall100_no0.jpeg", plot=p, device="jpeg", width = 5.1, height = 3.5, units="in")
+#ggsave("exp2_more_fewer_overall100_no0.jpeg", plot=p, device="jpeg", width = 5.1, height = 3.5, units="in")
+#ggsave("exp3_more_fewer_overall_no0.jpeg", plot=p, device="jpeg", width = 5.1, height = 3.5, units="in")
+
+```
+
+#### Plot F1 overall by probe type (NEW)
+```{r, echo=FALSE}
+p = ggplot(mean_more_less_res_f1, aes(x=epoch, y=mean_f1_score))+
+  geom_ribbon(aes(ymin = (mean_f1_score - sd_f1_score), ymax = (mean_f1_score + sd_f1_score), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  scale_color_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02","#225ea8"))+
+  scale_fill_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02", "#225ea8"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+  
+p  
+
+#ggsave("exp1_more_less_overall_f1.jpeg", plot=p, device="jpeg", width = 5, height = 3.5, units="in")
+```
+
+#### Plot F1 by answer type (NEW)
+```{r, echo=FALSE}
+p = ggplot(mean_more_less_res_f1, aes(x=epoch, y=mean_f1_answer))+
+  geom_ribbon(aes(ymin = (mean_f1_answer - sd_f1_answer), ymax = ifelse((mean_f1_answer + sd_f1_answer) > 1, 1, (mean_f1_answer + sd_f1_answer)), fill = answer), alpha=0.3)+
+  geom_line(aes(color=answer), size = 1.3)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+ggsave("exp1_more_less_answertype_f1.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+
+```
+
+#### Plot F1 by distance between referents (NEW)
+```{r, echo=FALSE}
+
+get_f1_more_less_bynumdiff <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  more_filename = paste(result_dir, "probeMORE_res_by_num_diff.csv", sep="/") 
+  less_filename = paste(result_dir, "probeLESS_res_by_num_diff.csv", sep="/")
+  more_num_diff <- read_csv(more_filename)
+  less_num_diff <- read_csv(less_filename)
+  more_less_num_diff <- rbind(more_num_diff, less_num_diff)
+
+  more_less_num_diff_f1 <- more_less_num_diff |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+  group_by(probetype, epoch, batchNum, batches, num_diff) |>
+  mutate(n_by_diff = sum(counts)) |>
+  mutate(correct = ifelse(answer==prediction, "true", "false")) |>
+  group_by(probetype, epoch, batchNum, batches, num_diff, correct, answer) |>
+  mutate(true_pos_yes = ifelse(answer=="yes" && prediction==answer, sum(counts), NA),
+         true_pos_no = ifelse(answer=="no" && prediction==answer, sum(counts), NA),
+         false_neg_yes = ifelse(answer=="yes" && prediction!=answer, sum(counts), NA),
+         false_neg_no = ifelse(answer=="no" && prediction!=answer, sum(counts), NA)
+         ) |> ungroup() |>
+  group_by(probetype, epoch, batchNum, batches, num_diff, prediction, answer) |>
+  mutate(false_pos_yes = ifelse(prediction=="yes" && answer!="yes", sum(counts), NA),
+         false_pos_no = ifelse(prediction=="no" && answer!="no", sum(counts), NA)) |> ungroup() |>
+  select(-c(prediction, counts, correct, answer)) |> 
+  group_by(probetype, epoch, batchNum, batches, num_diff) |> unique() |>
+  mutate_at(vars(true_pos_yes,true_pos_no, false_neg_yes, false_neg_no, false_pos_yes, false_pos_no), ~replace(., is.na(.), 0)) |>
+  summarize(true_pos_yes = sum(true_pos_yes, na.rm = TRUE), true_pos_no = sum(true_pos_no, na.rm = TRUE), false_neg_yes = sum(false_neg_yes, na.rm = TRUE), false_neg_no = sum(false_neg_no, na.rm = TRUE), false_pos_yes = sum(false_pos_yes, na.rm = TRUE), false_pos_no = sum(false_pos_no, na.rm = TRUE)) |>
+  mutate(f1_score = (2*(true_pos_yes+true_pos_no))/(2*(true_pos_yes+true_pos_no)+(false_neg_yes+false_neg_no)+(false_pos_yes+false_pos_no))) |>
+  mutate(f1_yes = (2*true_pos_yes)/(2*true_pos_yes+false_neg_yes+false_pos_yes),
+         f1_no = (2*true_pos_no)/(2*true_pos_no+true_pos_no+false_pos_no)) |>
+  select(probetype, epoch,batchNum, batches, num_diff, f1_score, f1_yes, f1_no) |>
+  pivot_longer(cols=c(f1_yes, f1_no),
+               names_to = "answer",
+               names_prefix = "f1_",
+               values_to = "f1_answer")|>
+  unique() |>
+  mutate(seed=seed)
+  
+  return(more_less_num_diff_f1)
+}
+
+more_less_num_diff_f1 <-  result_dirs |> map(get_f1_more_less_bynumdiff) |> reduce(rbind)
+mean_more_less_num_diff_f1 <- more_less_num_diff_f1 |> filter(batchNum == 0) |>
+  group_by(probetype, epoch, num_diff) |>
+  mutate_at(vars(f1_score, f1_answer), ~replace(., is.na(.), 0.0)) |>
+  summarise(mean_f1_score = mean(f1_score), sd_f1_score = sd(f1_score),
+            mean_f1_answer = mean(f1_answer), sd_f1_answer = sd(f1_answer))
+
+plot_data <- mean_more_less_num_diff_f1  |> mutate(num_diff= factor(abs(num_diff), levels = c("0", "1", "2", "3", "4", "5", "6", "7", "8"))) |> group_by(probetype, epoch, num_diff) |>summarise(mean_f1_score = mean(mean_f1_score))
+
+cols <- c("0"="#FDC926FF", "1"="#FA9E3BFF", "2"="#ED7953FF", "3"="#D8576BFF", "4"="#BD3786FF", "5"="#9C179EFF", "6"="#7301A8FF", "7"="#47039FFF", "8"="#0D0887FF")
+
+
+p = ggplot(plot_data , aes(x=epoch, y=mean_f1_score, color=num_diff))+
+  geom_line(size=1.3) +
+  scale_color_manual(values=cols)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Absolute difference", fill = "Absolute difference") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+ggsave("exp1_more_less_bydiff_f1.jpeg", plot=p, device="jpeg", width = 9, height = 3.5, units="in")
+```
+
+#### Plot F1 overall by probe type excluding distance=0 cases (NEW)
+```{r, echo=FALSE}
+get_more_less_acc_no0 <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  more_filename = paste(result_dir, "probeMORE_res_by_num_diff.csv", sep="/") 
+  less_filename = paste(result_dir, "probeLESS_res_by_num_diff.csv", sep="/")
+  more_num_diff <- read_csv(more_filename)
+  less_num_diff <- read_csv(less_filename)
+  more_less_num_diff <- rbind(more_num_diff, less_num_diff)
+  
+  more_less_acc_no0 <- more_less_num_diff |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+    filter(num_diff != 0) |>
+    mutate(correct = ifelse(answer==prediction, "true", "false")) |>
+    group_by(probetype, epoch, batchNum, batches) |>
+    mutate(n_total = sum(counts)) |>
+    group_by(probetype, epoch, batchNum, batches, correct) |>
+    mutate(n_correct = sum(counts),
+          prop_correct = n_correct/n_total) |>
+    ungroup() |>
+    filter(correct == "true") |>
+    select(probetype, epoch, batchNum, batches, prop_correct, answer, n_total, n_correct) |>
+    unique() |>
+    mutate(seed = seed)
+  
+  return(more_less_acc_no0)
+}
+
+more_less_res_no0 <- result_dirs |> map(get_more_less_acc_no0) |> reduce(rbind)
+
+more_less_res_no0_f1 <- get_f1_answers(more_less_res_no0)
+mean_more_less_res_no0_f1 <- more_less_res_no0_f1 |> ungroup() |>
+  group_by(probetype, epoch, answer) |>
+  summarise(mean_f1_score = mean(f1_score), sd_f1_score = sd(f1_score),
+            mean_f1_answer = mean(f1_answer), sd_f1_answer = sd(f1_answer))
+
+
+p = ggplot(mean_more_less_res_no0_f1, aes(x=epoch, y=mean_f1_score))+
+  geom_ribbon(aes(ymin = (mean_f1_score - sd_f1_score), ymax = (mean_f1_score + sd_f1_score), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  scale_color_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02","#225ea8"))+
+  scale_fill_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02", "#225ea8"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+  
+p  
+#ggsave("exp1_more_fewer_overall_no0_f1.jpeg", plot=p, device="jpeg", width = 5.1, height = 3.5, units="in")
+```
+
+
+### Experiment 2 : Trained only on one alternative
+
+```{r, echo=FALSE}
+result_main_dir = "../../data/results/experiment2_alternatives"
+result_main_dirs <- list.dirs(result_main_dir,recursive = FALSE)
+result_dirs_no_and_noequal<- as_tibble(result_main_dirs) |> filter(grepl("noand", value))
+result_dirs_no_and_noequal <- result_dirs_no_and_noequal$value
+```
+
+#### Get accuracies
+```{r, include=FALSE}
+probe.labs <- c("MORE", "FEWER")
+names(probe.labs) <- c("probeMORE", "probeLESS")
+
+get_more_less_acc <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  more_filename = paste(result_dir, "probeMORE_res_by_answer_type.csv", sep="/")
+  less_filename = paste(result_dir, "probeLESS_res_by_answer_type.csv", sep="/")
+  more_acc <- read_csv(more_filename)
+  less_acc <- read_csv(less_filename)
+  more_less_acc <- rbind(more_acc, less_acc)
+
+  more_less_acc <- more_less_acc |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+    group_by(probetype, epoch, batchNum) |>
+    mutate(overall_total = sum(n_total), overall_correct = sum(n_correct)) |>
+    mutate(seed = seed)
+  
+  return(more_less_acc)
+}
+# get experiment 1 data
+more_less_exp1 <- result_dirs |> map(get_more_less_acc) |> reduce(rbind) |>
+  mutate(experiment = "With \"equal\" alternative")
+# get experiment 3 data
+more_less_exp2 <- result_dirs_no_and_noequal |> map(get_more_less_acc) |> reduce(rbind) |>
+   mutate(experiment = "Without \"equal\" alternative")
+
+more_less_comp <- rbind(more_less_exp1, more_less_exp2)
+
+mean_more_less_comp  <- more_less_comp |> filter(batchNum == 0) |>
+  group_by(experiment, probetype, epoch, answer) |>
+  summarise(mean_acc = mean(prop_correct), sd_acc = sd(prop_correct), mean_correct= mean(overall_correct/overall_total), sd_correct = sd(overall_correct/overall_total))
+
+```
+
+#### plots with accuracies
+```{r, echo=FALSE}
+p= ggplot(mean_more_less_comp, aes(x=epoch, y=mean_correct))+
+  geom_ribbon(aes(ymin = (mean_correct - sd_correct), ymax = (mean_correct + sd_correct), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3)+  
+  facet_wrap(vars(experiment))+
+  scale_color_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02","#225ea8"))+
+  scale_fill_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02", "#225ea8"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+
+more_less_diff_res <- result_dirs_no_and_noequal |> map(get_more_less_bydiff) |> reduce(rbind)
+
+mean_more_less_diff_res <- more_less_diff_res |> filter(batchNum == 0) |>
+  group_by(probetype, epoch, num_diff) |>
+  summarise(mean_acc = mean(prop_correct), sd_acc = sd(prop_correct))
+
+plot_data <- mean_more_less_diff_res |> mutate(num_diff= factor(abs(num_diff), levels = c("0", "1", "2", "3", "4", "5", "6", "7", "8"))) |> group_by(probetype, epoch, num_diff) |>
+  summarise(mean_acc = mean(mean_acc))
+
+cols <- c("0"="#FDC926FF", "1"="#FA9E3BFF", "2"="#ED7953FF", "3"="#D8576BFF", "4"="#BD3786FF", "5"="#9C179EFF", "6"="#7301A8FF", "7"="#47039FFF", "8"="#0D0887FF")
+
+p = ggplot(plot_data , aes(x=epoch, y=mean_acc, color=num_diff))+
+  geom_line(size=1.3) +
+  scale_color_manual(values=cols)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Absolute difference", fill = "Absolute difference") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+```
+
+#### Get F1 scores (NEW)
+```{r, echo=FALSE}
+get_f1_answers_exp <- function(res){
+  res_f1 <- res |>filter(batchNum == 0) |> 
+  group_by(probetype, epoch, seed, answer, experiment) |>
+  mutate(n_wrong = n_total - n_correct) |>
+  unique() |>
+  pivot_wider(names_from = answer, values_from = c(n_total, n_correct, n_wrong)) |>
+  ungroup() |>
+  group_by(probetype, epoch, seed, experiment) |>
+  summarize(n_total_yes = sum(n_total_yes, na.rm = TRUE), true_pos_yes = sum(n_correct_yes, na.rm = TRUE), false_pos_yes = sum(n_wrong_no, na.rm = TRUE), n_total_no = sum(n_total_no, na.rm = TRUE), true_pos_no = sum(n_correct_no, na.rm = TRUE), false_pos_no = sum(n_wrong_yes, na.rm = TRUE)) |>
+  mutate(f1_score = (2*(true_pos_yes+true_pos_no))/((n_total_yes+n_total_no)+(true_pos_yes+true_pos_no)+(false_pos_yes+false_pos_no))) |>
+  mutate(f1_yes = (2*true_pos_yes)/(n_total_yes+true_pos_yes+false_pos_yes),
+         f1_no = (2*true_pos_no)/(n_total_no+true_pos_no+false_pos_no)) |>
+  select(probetype, epoch, seed, f1_score, f1_yes, f1_no, experiment) |>
+  pivot_longer(cols=c(f1_yes, f1_no),
+               names_to = "answer",
+               names_prefix = "f1_",
+               values_to = "f1_answer")
+  return(res_f1)
+}
+
+more_less_comp_f1 <- get_f1_answers_exp(more_less_comp)
+mean_more_less_comp_f1 <- more_less_comp_f1 |> ungroup() |>
+  group_by(probetype, epoch, answer, experiment) |>
+  summarise(mean_f1_score = mean(f1_score), sd_f1_score = sd(f1_score),
+            mean_f1_answer = mean(f1_answer), sd_f1_answer = sd(f1_answer))
+```
+
+#### plots with F1 (NEW)
+
+```{r, echo=FALSE}
+
+p= ggplot(mean_more_less_comp_f1, aes(x=epoch, y=mean_f1_score))+
+  geom_ribbon(aes(ymin = (mean_f1_score - sd_f1_score), ymax = (mean_f1_score + sd_f1_score), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3)+  
+  facet_wrap(vars(experiment))+
+  scale_color_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02","#225ea8"))+
+  scale_fill_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02", "#225ea8"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+ggsave("exp2_more_fewer_overall_comp_f1.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+
+more_less_num_diff_f1 <-  result_dirs_no_and_noequal |> map(get_f1_more_less_bynumdiff) |> reduce(rbind)
+mean_more_less_num_diff_f1 <- more_less_num_diff_f1 |> filter(batchNum == 0) |>
+  group_by(probetype, epoch, num_diff) |>
+  mutate_at(vars(f1_score, f1_answer), ~replace(., is.na(.), 0.0)) |>
+  summarise(mean_f1_score = mean(f1_score), sd_f1_score = sd(f1_score),
+            mean_f1_answer = mean(f1_answer), sd_f1_answer = sd(f1_answer))
+
+plot_data <- mean_more_less_num_diff_f1  |> mutate(num_diff= factor(abs(num_diff), levels = c("0", "1", "2", "3", "4", "5", "6", "7", "8"))) |> group_by(probetype, epoch, num_diff) |>summarise(mean_f1_score = mean(mean_f1_score))
+
+cols <- c("0"="#FDC926FF", "1"="#FA9E3BFF", "2"="#ED7953FF", "3"="#D8576BFF", "4"="#BD3786FF", "5"="#9C179EFF", "6"="#7301A8FF", "7"="#47039FFF", "8"="#0D0887FF")
+
+
+p = ggplot(plot_data , aes(x=epoch, y=mean_f1_score, color=num_diff))+
+  geom_line(size=1.3) +
+  scale_color_manual(values=cols)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Absolute difference", fill = "Absolute difference") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+ggsave("exp2_more_fewer_bydiff_f1.jpeg", plot=p, device="jpeg", width = 8.5, height = 3.5, units="in")
+```
+
+
+
+### Experiment 3 : Trained on subsampled CLEVR with childes frequencies
+
+```{r, echo=FALSE}
+result_main_dir = "../../data/results/experiment3_childesfreq"
+result_dirs <- list.dirs(result_main_dir,recursive = FALSE)
+```
+
+#### Get accuracies
+```{r, include=FALSE}
+probe.labs <- c("MORE", "FEWER")
+names(probe.labs) <- c("probeMORE", "probeLESS")
+
+get_more_less_acc <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  more_filename = paste(result_dir, "probeMORE_res_by_answer_type.csv", sep="/")
+  less_filename = paste(result_dir, "probeLESS_res_by_answer_type.csv", sep="/")
+  more_acc <- read_csv(more_filename)
+  less_acc <- read_csv(less_filename)
+  more_less_acc <- rbind(more_acc, less_acc)
+
+  more_less_acc <- more_less_acc |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+    group_by(probetype, epoch, batchNum) |>
+    mutate(overall_total = sum(n_total), overall_correct = sum(n_correct)) |>
+    mutate(seed = seed)
+  
+  return(more_less_acc)
+}
+
+more_less_res <- result_dirs |> map(get_more_less_acc) |> reduce(rbind)
+
+mean_more_less_res <- more_less_res |> filter(batchNum == 0) |>
+  group_by(probetype, epoch, answer) |>
+  summarise(mean_acc = mean(prop_correct), sd_acc = sd(prop_correct), mean_correct= mean(overall_correct/overall_total), sd_correct = sd(overall_correct/overall_total))
+```
+
+#### Get F1 scores
+```{r, include=FALSE}
+more_less_res_f1 <- get_f1_answers(more_less_res)
+mean_more_less_res_f1_3 <- more_less_res_f1 |> ungroup() |>
+  group_by(probetype, epoch, answer) |>
+  summarise(mean_f1_score = mean(f1_score), sd_f1_score = sd(f1_score),
+            mean_f1_answer = mean(f1_answer), sd_f1_answer = sd(f1_answer))
+```
+
+#### Plot accuracy overall by probe type
+```{r, echo=FALSE}
+p= ggplot(mean_more_less_res, aes(x=epoch, y=mean_correct))+
+  geom_ribbon(aes(ymin = (mean_correct - sd_correct), ymax = (mean_correct + sd_correct), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3)+  
+  scale_color_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02","#225ea8"))+
+  scale_fill_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02", "#225ea8"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+#ggsave("exp1_more_fewer_overall100.jpeg", plot=p, device="jpeg", width = 5.1, height = 3.5, units="in")
+#ggsave("exp2_more_fewer_overall100.jpeg", plot=p, device="jpeg", width = 5.1, height = 3.5, units="in")
+#ggsave("exp3_more_fewer_overall100.jpeg", plot=p, device="jpeg", width = 5.1, height = 3.5, units="in")
+
+# For LESS probe tends to just answer yes a disproportionate amount of times.
+# maybe get proportion of yes/no in answers vs predictions
+# Also tends to say yes a lot for MORE probe though to a lesser extent.
+
+#ggplot(more_less_res, aes(x=epoch, y=overall_correct, color = as.factor(seed)))+
+#  geom_line(size=1.3) +
+#  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+#  labs(x= "Epoch", y="accuracy", color = "seed", linetype = "Probe type") +
+#  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+
+```
+
+#### Plot accuracy by answer type
+```{r, echo=FALSE}
+
+p = ggplot(mean_more_less_res, aes(x=epoch, y=mean_acc))+
+  #geom_ribbon(aes(ymin = (mean_acc - sd_acc), ymax = (mean_acc + sd_acc), fill = answer), alpha=0.3)+
+  geom_line(aes(color=answer), size = 1.3)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+#ggsave("exp1_more_fewer_answertype100.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+#ggsave("exp2_more_fewer_answertype100.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+#ggsave("exp3_more_fewer_answertype100.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+
+```
+
+#### Plot accuracy by number difference between referents
+```{r, echo=FALSE}
+
+get_more_less_bydiff <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  more_filename = paste(result_dir, "probeMORE_res_by_num_diff.csv", sep="/") 
+  less_filename = paste(result_dir, "probeLESS_res_by_num_diff.csv", sep="/")
+  more_num_diff <- read_csv(more_filename)
+  less_num_diff <- read_csv(less_filename)
+  more_less_num_diff <- rbind(more_num_diff, less_num_diff)
+
+  more_less_num_diff_ <- more_less_num_diff |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+    group_by(probetype, epoch, batchNum, batches, num_diff) |>
+    mutate(n_by_diff = sum(counts)) |>
+    mutate(correct = ifelse(answer==prediction, "true", "false")) |>
+    group_by(probetype, epoch, batchNum, batches, num_diff, correct) |>
+    mutate(n_correct_by_diff = sum(counts))
+
+  more_less_num_diff_sum <- more_less_num_diff_ |> 
+    filter(correct == "true") |>
+    mutate(prop_correct = n_correct_by_diff/n_by_diff) |>
+    select(c(probetype, epoch, batches, num_diff, prop_correct)) |>
+    unique() |>
+    mutate(seed = seed)
+  
+  return(more_less_num_diff_sum)
+}
+
+more_less_diff_res <- result_dirs |> map(get_more_less_bydiff) |> reduce(rbind)
+
+mean_more_less_diff_res <- more_less_diff_res |> filter(batchNum == 0) |>
+  group_by(probetype, epoch, num_diff) |>
+  summarise(mean_acc = mean(prop_correct), sd_acc = sd(prop_correct))
+
+plot_data <- mean_more_less_diff_res |> mutate(num_diff= factor(abs(num_diff), levels = c("0", "1", "2", "3", "4", "5", "6", "7", "8"))) |> group_by(probetype, epoch, num_diff) |>
+  summarise(mean_acc = mean(mean_acc))
+
+cols <- c("0"="#FDC926FF", "1"="#FA9E3BFF", "2"="#ED7953FF", "3"="#D8576BFF", "4"="#BD3786FF", "5"="#9C179EFF", "6"="#7301A8FF", "7"="#47039FFF", "8"="#0D0887FF")
+
+p = ggplot(plot_data , aes(x=epoch, y=mean_acc, color=num_diff))+
+  geom_line(size=1.3) +
+  scale_color_manual(values=cols)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Absolute difference", fill = "Absolute difference") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+#ggsave("exp1_more_fewer_byabsolutedist.jpeg", plot=p, device="jpeg", width = 8.5, height = 3.5, units="in")
+#ggsave("exp2_more_fewer_byabsolutedist100.jpeg", plot=p, device="jpeg", width = 8.5, height = 3.5, units="in")
+#ggsave("exp3_more_fewer_byabsolutedist100.jpeg", plot=p, device="jpeg", width = 8.5, height = 3.5, units="in")
+  
+```
+
+#### Plot accuracy overall by probe type excluding distance=0 cases
+```{r, echo=FALSE}
+## Clearly the num difference is super important and where the model struggles is when there is no difference it says there is almost automatically! This may be because the clevr training set also includes equal_than, similar to more_than/less_than type questions which lead the model to trink that zero difference is a yes answer.
+
+#What is performance like if we remove the zero cases
+
+get_more_less_acc_no0 <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  more_filename = paste(result_dir, "probeMORE_res_by_num_diff.csv", sep="/") 
+  less_filename = paste(result_dir, "probeLESS_res_by_num_diff.csv", sep="/")
+  more_num_diff <- read_csv(more_filename)
+  less_num_diff <- read_csv(less_filename)
+  more_less_num_diff <- rbind(more_num_diff, less_num_diff)
+  
+  more_less_acc_no0 <- more_less_num_diff |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+    filter(num_diff != 0) |>
+    mutate(correct = ifelse(answer==prediction, "true", "false")) |>
+    group_by(probetype, epoch, batchNum, batches) |>
+    mutate(n_total = sum(counts)) |>
+    group_by(probetype, epoch, batchNum, batches, correct) |>
+    mutate(n_correct = sum(counts),
+          prop_correct = n_correct/n_total) |>
+    ungroup() |>
+    filter(correct == "true") |>
+    select(probetype, epoch, batchNum, batches, prop_correct) |>
+    unique() |>
+    mutate(seed = seed)
+  
+  return(more_less_acc_no0)
+}
+
+more_less_res_no0 <- result_dirs |> map(get_more_less_acc_no0) |> reduce(rbind)
+
+mean_more_less_res_no0 <- more_less_res_no0 |> filter(batchNum == 0) |>
+  group_by(probetype, epoch) |>
+  summarise(mean_acc= mean(prop_correct), sd_acc = sd(prop_correct))
+
+
+p = ggplot(mean_more_less_res_no0, aes(x=epoch, y=mean_acc))+
+  geom_ribbon(aes(ymin = (mean_acc - sd_acc), ymax = (mean_acc + sd_acc), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  scale_color_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02","#225ea8"))+
+  scale_fill_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02", "#225ea8"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+#ggsave("exp1_more_fewer_overall100_no0.jpeg", plot=p, device="jpeg", width = 5.1, height = 3.5, units="in")
+#ggsave("exp2_more_fewer_overall100_no0.jpeg", plot=p, device="jpeg", width = 5.1, height = 3.5, units="in")
+#ggsave("exp3_more_fewer_overall_no0.jpeg", plot=p, device="jpeg", width = 5.1, height = 3.5, units="in")
+
+```
+
+#### Plot F1 overall by probe type
+```{r, echo=FALSE}
+p = ggplot(mean_more_less_res_f1_3, aes(x=epoch, y=mean_f1_score))+
+  geom_ribbon(aes(ymin = (mean_f1_score - sd_f1_score), ymax = (mean_f1_score + sd_f1_score), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  scale_color_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02","#225ea8"))+
+  scale_fill_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02", "#225ea8"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+  
+p 
+#ggsave("exp3_more_fewer_overall_f1.jpeg", plot=p, device="jpeg", width = 5.1, height = 3.5, units="in")
+```
+
+#### Plot F1 by answer type 
+```{r, echo=FALSE}
+p = ggplot(mean_more_less_res_f1_3, aes(x=epoch, y=mean_f1_answer))+
+  geom_ribbon(aes(ymin = (mean_f1_answer - sd_f1_answer), ymax = ifelse((mean_f1_answer + sd_f1_answer) > 1, 1, (mean_f1_answer + sd_f1_answer)), fill = answer), alpha=0.3)+
+  geom_line(aes(color=answer), size = 1.3)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+#ggsave("exp1_and2_or2_answertype_sd.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+#ggsave("exp2_and2_or2_answertype_sd.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+
+```
+
+#### Plot F1 by distance between referents
+```{r, echo=FALSE}
+
+get_f1_more_less_bynumdiff <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  more_filename = paste(result_dir, "probeMORE_res_by_num_diff.csv", sep="/") 
+  less_filename = paste(result_dir, "probeLESS_res_by_num_diff.csv", sep="/")
+  more_num_diff <- read_csv(more_filename)
+  less_num_diff <- read_csv(less_filename)
+  more_less_num_diff <- rbind(more_num_diff, less_num_diff)
+
+  more_less_num_diff_f1 <- more_less_num_diff |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+  group_by(probetype, epoch, batchNum, batches, num_diff) |>
+  mutate(n_by_diff = sum(counts)) |>
+  mutate(correct = ifelse(answer==prediction, "true", "false")) |>
+  group_by(probetype, epoch, batchNum, batches, num_diff, correct, answer) |>
+  mutate(true_pos_yes = ifelse(answer=="yes" && prediction==answer, sum(counts), NA),
+         true_pos_no = ifelse(answer=="no" && prediction==answer, sum(counts), NA),
+         false_neg_yes = ifelse(answer=="yes" && prediction!=answer, sum(counts), NA),
+         false_neg_no = ifelse(answer=="no" && prediction!=answer, sum(counts), NA)
+         ) |> ungroup() |>
+  group_by(probetype, epoch, batchNum, batches, num_diff, prediction, answer) |>
+  mutate(false_pos_yes = ifelse(prediction=="yes" && answer!="yes", sum(counts), NA),
+         false_pos_no = ifelse(prediction=="no" && answer!="no", sum(counts), NA)) |> ungroup() |>
+  select(-c(prediction, counts, correct, answer)) |> 
+  group_by(probetype, epoch, batchNum, batches, num_diff) |> unique() |>
+  mutate_at(vars(true_pos_yes,true_pos_no, false_neg_yes, false_neg_no, false_pos_yes, false_pos_no), ~replace(., is.na(.), 0)) |>
+  summarize(true_pos_yes = sum(true_pos_yes, na.rm = TRUE), true_pos_no = sum(true_pos_no, na.rm = TRUE), false_neg_yes = sum(false_neg_yes, na.rm = TRUE), false_neg_no = sum(false_neg_no, na.rm = TRUE), false_pos_yes = sum(false_pos_yes, na.rm = TRUE), false_pos_no = sum(false_pos_no, na.rm = TRUE)) |>
+  mutate(f1_score = (2*(true_pos_yes+true_pos_no))/(2*(true_pos_yes+true_pos_no)+(false_neg_yes+false_neg_no)+(false_pos_yes+false_pos_no))) |>
+  mutate(f1_yes = (2*true_pos_yes)/(2*true_pos_yes+false_neg_yes+false_pos_yes),
+         f1_no = (2*true_pos_no)/(2*true_pos_no+true_pos_no+false_pos_no)) |>
+  select(probetype, epoch,batchNum, batches, num_diff, f1_score, f1_yes, f1_no) |>
+  pivot_longer(cols=c(f1_yes, f1_no),
+               names_to = "answer",
+               names_prefix = "f1_",
+               values_to = "f1_answer")|>
+  unique() |>
+  mutate(seed=seed)
+  
+  return(more_less_num_diff_f1)
+}
+
+more_less_num_diff_f1 <-  result_dirs |> map(get_f1_more_less_bynumdiff) |> reduce(rbind)
+mean_more_less_num_diff_f1 <- more_less_num_diff_f1 |> filter(batchNum == 0) |>
+  group_by(probetype, epoch, num_diff) |>
+  mutate_at(vars(f1_score, f1_answer), ~replace(., is.na(.), 0.0)) |>
+  summarise(mean_f1_score = mean(f1_score), sd_f1_score = sd(f1_score),
+            mean_f1_answer = mean(f1_answer), sd_f1_answer = sd(f1_answer))
+
+plot_data <- mean_more_less_num_diff_f1  |> mutate(num_diff= factor(abs(num_diff), levels = c("0", "1", "2", "3", "4", "5", "6", "7", "8"))) |> group_by(probetype, epoch, num_diff) |>summarise(mean_f1_score = mean(mean_f1_score))
+
+cols <- c("0"="#FDC926FF", "1"="#FA9E3BFF", "2"="#ED7953FF", "3"="#D8576BFF", "4"="#BD3786FF", "5"="#9C179EFF", "6"="#7301A8FF", "7"="#47039FFF", "8"="#0D0887FF")
+
+
+p = ggplot(plot_data , aes(x=epoch, y=mean_f1_score, color=num_diff))+
+  geom_line(size=1.3) +
+  scale_color_manual(values=cols)+
+  facet_wrap(vars(probetype), labeller = labeller(probetype = probe.labs))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Absolute difference", fill = "Absolute difference") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+ggsave("exp3_more_fewer_bydiff_f1.jpeg", plot=p, device="jpeg", width = 8.5, height = 3.5, units="in")
+  
+```
+
+#### Plot F1 overall by probe type excluding distance=0 cases
+```{r, echo=FALSE}
+get_more_less_acc_no0 <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  more_filename = paste(result_dir, "probeMORE_res_by_num_diff.csv", sep="/") 
+  less_filename = paste(result_dir, "probeLESS_res_by_num_diff.csv", sep="/")
+  more_num_diff <- read_csv(more_filename)
+  less_num_diff <- read_csv(less_filename)
+  more_less_num_diff <- rbind(more_num_diff, less_num_diff)
+  
+  more_less_acc_no0 <- more_less_num_diff |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+    filter(num_diff != 0) |>
+    mutate(correct = ifelse(answer==prediction, "true", "false")) |>
+    group_by(probetype, epoch, batchNum, batches) |>
+    mutate(n_total = sum(counts)) |>
+    group_by(probetype, epoch, batchNum, batches, correct) |>
+    mutate(n_correct = sum(counts),
+          prop_correct = n_correct/n_total) |>
+    ungroup() |>
+    filter(correct == "true") |>
+    select(probetype, epoch, batchNum, batches, prop_correct, answer, n_total, n_correct) |>
+    unique() |>
+    mutate(seed = seed)
+  
+  return(more_less_acc_no0)
+}
+
+more_less_res_no0 <- result_dirs |> map(get_more_less_acc_no0) |> reduce(rbind)
+
+more_less_res_no0_f1 <- get_f1_answers(more_less_res_no0)
+mean_more_less_res_no0_f1_3 <- more_less_res_no0_f1 |> ungroup() |>
+  group_by(probetype, epoch, answer) |>
+  summarise(mean_f1_score = mean(f1_score), sd_f1_score = sd(f1_score),
+            mean_f1_answer = mean(f1_answer), sd_f1_answer = sd(f1_answer))
+
+
+p = ggplot(mean_more_less_res_no0_f1_3, aes(x=epoch, y=mean_f1_score))+
+  geom_ribbon(aes(ymin = (mean_f1_score - sd_f1_score), ymax = (mean_f1_score + sd_f1_score), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  scale_color_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02","#225ea8"))+
+  scale_fill_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02", "#225ea8"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+  
+p  
+#ggsave("exp3_more_fewer_overall_no0_f1.jpeg", plot=p, device="jpeg", width = 5.1, height = 3.5, units="in")
+```
+
+#### Plot F1 comparison Exp 1 and Exp 3
+```{r}
+mean_more_less_res_f1_1 <- mean_more_less_res_f1 |>
+  mutate(experiment = "With CLEVR frequencies")
+mean_more_less_res_f1_comp <- mean_more_less_res_f1_3 |>
+  mutate(experiment = "With CHILDES frequencies") |>
+  rbind(mean_more_less_res_f1_1)
+
+p = ggplot(transform(mean_more_less_res_f1_comp,
+      experiment=factor(experiment,levels=c("With CLEVR frequencies","With CHILDES frequencies"))), aes(x=epoch, y=mean_f1_score))+
+    geom_ribbon(aes(ymin = (mean_f1_score - sd_f1_score), ymax = (mean_f1_score + sd_f1_score), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  facet_wrap(vars(experiment))+
+  scale_color_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02","#225ea8"))+
+  scale_fill_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02", "#225ea8"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+  
+p
+ggsave("exp3_more_less_overall_comp_f1.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+
+mean_more_less_res_no0_f1_1 <- mean_more_less_res_no0_f1 |>
+  mutate(experiment = "With CLEVR frequencies")
+mean_more_less_res_no0_f1_comp <- mean_more_less_res_no0_f1_3 |>
+  mutate(experiment = "With CHILDES frequencies") |>
+  rbind(mean_more_less_res_no0_f1_1)
+
+p = ggplot(transform(mean_more_less_res_no0_f1_comp,
+      experiment=factor(experiment,levels=c("With CLEVR frequencies","With CHILDES frequencies"))), aes(x=epoch, y=mean_f1_score))+
+    geom_ribbon(aes(ymin = (mean_f1_score - sd_f1_score), ymax = (mean_f1_score + sd_f1_score), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  facet_wrap(vars(experiment))+
+  scale_color_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02","#225ea8"))+
+  scale_fill_manual(labels=c("FEWER", "MORE"), values=c("#cc4c02", "#225ea8"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+  
+p
+ggsave("exp3_more_less_overall_comp_no0_f1.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+
+```
+
+
+## SAME (Appendix)
+### Experiment 1 : New SAME
+```{r, echo=FALSE}
+result_main_dir = "../../data/results/experiment1_clevr"
+result_dirs <- list.dirs(result_main_dir,recursive = FALSE)
+```
+
+### Experiment 1 : Using old SAME probe
+```{r}
+# For experiment 1 run 0
+result_main_dir = "../../data/results/appendix"
+result_dirs <- list.dirs(result_main_dir,recursive = FALSE)
+```
+
+#### Accuracy plots
+```{r}
+get_same_acc <- function(result_dir){
+  seed = as.integer(str_sub(result_dir, -1, -1))
+  filename = paste(result_dir, "probeSAME_res_by_answer_type.csv", sep="/")
+  same_acc <- read_csv(filename)
+  same_acc <- same_acc |> mutate(batches = ifelse(batchNum == 0, epoch*10938, (epoch-1)*10938+batchNum)) |> 
+    group_by(epoch, batchNum) |>
+    mutate(overall_total = sum(n_total), overall_correct = sum(n_correct)) |>
+    mutate(seed = seed)
+  
+  return(same_acc)
+}
+
+same_res <- result_dirs |> map(get_same_acc) |> reduce(rbind)
+
+mean_same_res <- same_res |> filter(batchNum == 0) |>
+  group_by(probetype, epoch, answer) |>
+  summarise(mean_acc = mean(prop_correct), sd_acc = sd(prop_correct), mean_correct= mean(overall_correct/overall_total), sd_correct = sd(overall_correct/overall_total))
+
+# Accuracy by epoch
+p= ggplot(mean_same_res, aes(x=epoch, y=mean_acc))+
+  geom_ribbon(aes(ymin = (mean_acc - sd_acc), ymax = (mean_acc + sd_acc), fill = answer), alpha=0.3)+
+  geom_line(aes(color=answer), size = 1.3)+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+#ggsave("exp1_same_answertype_sd.jpeg", plot=p, device="jpeg", width = 5.1, height = 3.5, units="in")
+#ggsave("exp1_app_oldsame_answertype_sd.jpeg", plot=p, device="jpeg", width = 5.1, height = 3.5, units="in")
+
+p = ggplot(mean_same_res, aes(x=epoch, y=mean_correct))+
+  geom_ribbon(aes(ymin = (mean_correct - sd_correct), ymax = (mean_correct + sd_correct), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3)+
+  scale_color_manual(labels=c("SAME"), values=c("#225ea8"))+
+  scale_fill_manual(labels=c("SAME"), values=c("#225ea8"))+
+  labs(x= "Epoch", y="Mean accuracy", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+#ggsave("exp1_same_overall.jpeg", plot=p, device="jpeg", width = 5.1, height = 3.5, units="in")
+#ggsave("exp1_app_oldsame_overall.jpeg", plot=p, device="jpeg", width = 5.1, height = 3.5, units="in")
+# Note the initial peak in accuracy for yes questions is just because the model answers "yes" to the large majority of SAME probe questions indiscriminately
+```
+
+#### Get F1 scores
+```{r, include=FALSE}
+
+same_res_f1 <- get_f1_answers(same_res)
+mean_same_res_f1 <- same_res_f1 |> ungroup() |>
+  group_by(probetype, epoch, answer) |>
+  summarise(mean_f1_score = mean(f1_score), sd_f1_score = sd(f1_score),
+            mean_f1_answer = mean(f1_answer), sd_f1_answer = sd(f1_answer))
+```
+
+#### F1 plots
+
+```{r, echo=FALSE}
+p = ggplot(mean_same_res_f1, aes(x=epoch, y=mean_f1_score))+
+  geom_ribbon(aes(ymin = (mean_f1_score - sd_f1_score), ymax = (mean_f1_score + sd_f1_score), fill = probetype), alpha=0.3)+
+  geom_line(aes(color=probetype), size=1.3) +
+  scale_color_manual(labels=c("SAME"), values=c("#225ea8"))+
+  scale_fill_manual(labels=c("SAME"), values=c("#225ea8"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Probe type", fill = "Probe type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+  
+p  
+
+#ggsave("exp1_newsame_overall_f1.jpeg", plot=p, device="jpeg", width = 5, height = 3.5, units="in")
+ggsave("exp1_oldsame_overall_f1.jpeg", plot=p, device="jpeg", width = 5, height = 3.5, units="in")
+```
+
+```{r, echo=FALSE}
+p = ggplot(mean_same_res_f1, aes(x=epoch, y=mean_f1_answer))+
+  geom_ribbon(aes(ymin = (mean_f1_answer - sd_f1_answer), ymax = ifelse((mean_f1_answer + sd_f1_answer) > 1, 1, (mean_f1_answer + sd_f1_answer)), fill = answer), alpha=0.3)+
+  geom_line(aes(color=answer), size = 1.3)+
+  scale_color_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_fill_manual(labels=c("no", "yes"), values=c("#D55E00", "#009E73"))+
+  scale_y_continuous(limits=c(0.0, 1.0))+
+  labs(x= "Epoch", y="Mean F1 score", color = "Answer type", fill = "Answer type") +
+  theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
+
+p
+#ggsave("exp1_newsame_answertype_f1.jpeg", plot=p, device="jpeg", width = 5, height = 3.5, units="in")
+ggsave("exp1_oldsame_answertype_f1.jpeg", plot=p, device="jpeg", width = 5, height = 3.5, units="in")
+
+```

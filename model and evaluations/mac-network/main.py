@@ -668,138 +668,140 @@ def main():
     preprocessor = Preprocesser()
     data, embeddings, answerDict = preprocessor.preprocessData()
     print("took {} seconds".format(bcolored("{:.2f}".format(time.time() - start), "blue")))
-
-    # build model
-    # EP adding for tf v2 compatibility
-    tf.compat.v1.disable_eager_execution()
-    print(bold("Building model..."))
-    start = time.time()
-    model = MACnet(embeddings, answerDict)
-    print("took {} seconds".format(bcolored("{:.2f}".format(time.time() - start), "blue")))
-
-    # initializer
-    init = tf.compat.v1.global_variables_initializer()
-
-    # savers
-    savers = setSavers(model)
-    saver, emaSaver = savers["saver"], savers["emaSaver"]
-
-    # sessionConfig
-    sessionConfig = setSession()
-
-    with tf.compat.v1.Session(config = sessionConfig) as sess:
-
-        # ensure no more ops are added after model is built
-        sess.graph.finalize()
-
-        # restore / initialize weights, initialize epoch variable
-        epoch = loadWeights(sess, saver, init)
-
-        if config.train:
-            start0 = time.time()
-
-            bestEpoch = epoch
-            bestRes = None
-            prevRes = None
-
-            # epoch in [restored + 1, epochs]
-            for epoch in range(config.restoreEpoch + 1, config.epochs + 1):
-                print(bcolored("Training epoch {}...".format(epoch), "green"))
-                start = time.time()
-
-                # train
-                # calle = lambda: model.runEpoch(), collectRuntimeStats, writer
-                trainingData, alterData = chooseTrainingData(data)
-                trainRes = runEpoch(sess, model, trainingData, train = True, epoch = epoch,
-                    saver = saver, alterData = alterData)
-
-                # save weights
-                saver.save(sess, config.weightsFile(epoch))
-                if config.saveSubset:
-                    subsetSaver.save(sess, config.subsetWeightsFile(epoch))
-
-                # load EMA weights
-                if config.useEMA:
-                    print(bold("Restoring EMA weights"))
-                    emaSaver.restore(sess, config.weightsFile(epoch))
-
-                # evaluation
-                evalRes = runEvaluation(sess, model, data["main"], epoch)
-                extraEvalRes = runEvaluation(sess, model, data["extra"], epoch,
-                    evalTrain = not config.extraVal)
-
-                # restore standard weights
-                if config.useEMA:
-                    print(bold("Restoring standard weights"))
-                    saver.restore(sess, config.weightsFile(epoch))
-
-                print("")
-
-                epochTime = time.time() - start
-                print("took {:.2f} seconds".format(epochTime))
-
-                # print results
-                printDatasetResults(trainRes, evalRes, extraEvalRes)
-
-                # stores predictions and optionally attention maps
-                if config.getPreds:
-                    print(bcolored("Writing predictions...", "white"))
-                    writePreds(preprocessor, evalRes, extraEvalRes)
-
-                logRecord(epoch, epochTime, config.lr, trainRes, evalRes, extraEvalRes)
-
-                # update best result
-                # compute curr and prior
-                currRes = {"train": trainRes, "val": evalRes["val"]}
-                curr = {"res": currRes, "epoch": epoch}
-
-                if bestRes is None or better(currRes, bestRes):
-                    bestRes = currRes
-                    bestEpoch = epoch
-
-                prior = {"best": {"res": bestRes, "epoch": bestEpoch},
-                         "prev": {"res": prevRes, "epoch": epoch - 1}}
-
-                # lr reducing
-                if config.lrReduce:
-                    if not improveEnough(curr, prior, config.lr):
-                        config.lr *= config.lrDecayRate
-                        print(colored("Reducing LR to {}".format(config.lr), "red"))
-
-                # early stopping
-                if config.earlyStopping > 0:
-                    if epoch - bestEpoch > config.earlyStopping:
-                        break
-
-                # update previous result
-                prevRes = currRes
-
-            # reduce epoch back to the last one we trained on
-            epoch -= 1
-            print("Training took {:.2f} seconds ({:} epochs)".format(time.time() - start0,
-                epoch - config.restoreEpoch))
-
-        if config.finalTest:
-            print("Testing on epoch {}...".format(epoch))
-
-            start = time.time()
-            if epoch > 0:
-                if config.useEMA:
-                    emaSaver.restore(sess, config.weightsFile(epoch))
-                else:
-                    saver.restore(sess, config.weightsFile(epoch))
-
-            evalRes = runEvaluation(sess, model, data["main"], epoch, evalTest = True)
-            extraEvalRes = runEvaluation(sess, model, data["extra"], epoch,
-                evalTrain = not config.extraVal, evalTest = True)
-
-            print("took {:.2f} seconds".format(time.time() - start))
-            printDatasetResults(None, evalRes, extraEvalRes)
-
-            print("Writing predictions...")
-            writePreds(preprocessor, evalRes, extraEvalRes)
-
-        print(bcolored("Done!","white"))
+    print(config.questionWordsNum)
+    print(config.answerWordsNum)
+    #
+    # # build model
+    # # EP adding for tf v2 compatibility
+    # tf.compat.v1.disable_eager_execution()
+    # print(bold("Building model..."))
+    # start = time.time()
+    # model = MACnet(embeddings, answerDict)
+    # print("took {} seconds".format(bcolored("{:.2f}".format(time.time() - start), "blue")))
+    #
+    # # initializer
+    # init = tf.compat.v1.global_variables_initializer()
+    #
+    # # savers
+    # savers = setSavers(model)
+    # saver, emaSaver = savers["saver"], savers["emaSaver"]
+    #
+    # # sessionConfig
+    # sessionConfig = setSession()
+    #
+    # with tf.compat.v1.Session(config = sessionConfig) as sess:
+    #
+    #     # ensure no more ops are added after model is built
+    #     sess.graph.finalize()
+    #
+    #     # restore / initialize weights, initialize epoch variable
+    #     epoch = loadWeights(sess, saver, init)
+    #
+    #     if config.train:
+    #         start0 = time.time()
+    #
+    #         bestEpoch = epoch
+    #         bestRes = None
+    #         prevRes = None
+    #
+    #         # epoch in [restored + 1, epochs]
+    #         for epoch in range(config.restoreEpoch + 1, config.epochs + 1):
+    #             print(bcolored("Training epoch {}...".format(epoch), "green"))
+    #             start = time.time()
+    #
+    #             # train
+    #             # calle = lambda: model.runEpoch(), collectRuntimeStats, writer
+    #             trainingData, alterData = chooseTrainingData(data)
+    #             trainRes = runEpoch(sess, model, trainingData, train = True, epoch = epoch,
+    #                 saver = saver, alterData = alterData)
+    #
+    #             # save weights
+    #             saver.save(sess, config.weightsFile(epoch))
+    #             if config.saveSubset:
+    #                 subsetSaver.save(sess, config.subsetWeightsFile(epoch))
+    #
+    #             # load EMA weights
+    #             if config.useEMA:
+    #                 print(bold("Restoring EMA weights"))
+    #                 emaSaver.restore(sess, config.weightsFile(epoch))
+    #
+    #             # evaluation
+    #             evalRes = runEvaluation(sess, model, data["main"], epoch)
+    #             extraEvalRes = runEvaluation(sess, model, data["extra"], epoch,
+    #                 evalTrain = not config.extraVal)
+    #
+    #             # restore standard weights
+    #             if config.useEMA:
+    #                 print(bold("Restoring standard weights"))
+    #                 saver.restore(sess, config.weightsFile(epoch))
+    #
+    #             print("")
+    #
+    #             epochTime = time.time() - start
+    #             print("took {:.2f} seconds".format(epochTime))
+    #
+    #             # print results
+    #             printDatasetResults(trainRes, evalRes, extraEvalRes)
+    #
+    #             # stores predictions and optionally attention maps
+    #             if config.getPreds:
+    #                 print(bcolored("Writing predictions...", "white"))
+    #                 writePreds(preprocessor, evalRes, extraEvalRes)
+    #
+    #             logRecord(epoch, epochTime, config.lr, trainRes, evalRes, extraEvalRes)
+    #
+    #             # update best result
+    #             # compute curr and prior
+    #             currRes = {"train": trainRes, "val": evalRes["val"]}
+    #             curr = {"res": currRes, "epoch": epoch}
+    #
+    #             if bestRes is None or better(currRes, bestRes):
+    #                 bestRes = currRes
+    #                 bestEpoch = epoch
+    #
+    #             prior = {"best": {"res": bestRes, "epoch": bestEpoch},
+    #                      "prev": {"res": prevRes, "epoch": epoch - 1}}
+    #
+    #             # lr reducing
+    #             if config.lrReduce:
+    #                 if not improveEnough(curr, prior, config.lr):
+    #                     config.lr *= config.lrDecayRate
+    #                     print(colored("Reducing LR to {}".format(config.lr), "red"))
+    #
+    #             # early stopping
+    #             if config.earlyStopping > 0:
+    #                 if epoch - bestEpoch > config.earlyStopping:
+    #                     break
+    #
+    #             # update previous result
+    #             prevRes = currRes
+    #
+    #         # reduce epoch back to the last one we trained on
+    #         epoch -= 1
+    #         print("Training took {:.2f} seconds ({:} epochs)".format(time.time() - start0,
+    #             epoch - config.restoreEpoch))
+    #
+    #     if config.finalTest:
+    #         print("Testing on epoch {}...".format(epoch))
+    #
+    #         start = time.time()
+    #         if epoch > 0:
+    #             if config.useEMA:
+    #                 emaSaver.restore(sess, config.weightsFile(epoch))
+    #             else:
+    #                 saver.restore(sess, config.weightsFile(epoch))
+    #
+    #         evalRes = runEvaluation(sess, model, data["main"], epoch, evalTest = True)
+    #         extraEvalRes = runEvaluation(sess, model, data["extra"], epoch,
+    #             evalTrain = not config.extraVal, evalTest = True)
+    #
+    #         print("took {:.2f} seconds".format(time.time() - start))
+    #         printDatasetResults(None, evalRes, extraEvalRes)
+    #
+    #         print("Writing predictions...")
+    #         writePreds(preprocessor, evalRes, extraEvalRes)
+    #
+    #    print(bcolored("Done!","white"))
 
 if __name__ == '__main__':
     parseArgs()
