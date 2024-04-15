@@ -44,12 +44,11 @@ pip install requirements.txt
 
 Please cite the following paper:
 ```
-@manuscript{portelance2023learning,
+@article{portelance2024learning,
   title={Learning the meanings of function words from grounded language using a visual question answering model},
   author={Portelance, Eva and Frank, Michael C. and Jurafsky, Dan},
-  year={2023},
-  note={Under review},
-  url={https://github.com/evaportelance/vqa-function-word-learning/blob/main/writeups/Function_words_and_VQA_manuscript.pdf}
+  year={2024},
+  journal={Cognitive Science}
 }
 ```
 
