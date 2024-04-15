@@ -137,7 +137,7 @@ p = ggplot(mean_and_or_res_f1, aes(x=epoch, y=mean_f1_score))+
   
 p  
 
-ggsave("exp1_and2_or2_overall_f1.jpeg", plot=p, device="jpeg", width = 5, height = 3.5, units="in")
+#ggsave("exp1_and2_or2_overall_f1.jpeg", plot=p, device="jpeg", width = 5, height = 3.5, units="in")
 ```
 
 #### Plot F1 by answer type (NEW)
@@ -171,14 +171,23 @@ get_or_amb_acc <- function(result_dir){
   return(or_amb_acc)
 }
 
-or_amb_res <- result_dirs |> map(get_or_amb_acc) |> reduce(rbind)
-mean_or_amb_res <- or_amb_res |> filter(batchNum == 0) |>
-  group_by(probetype, epoch, answer_type) |>
-  summarise(mean_prop = mean(proportion), sd_prop = sd(proportion)) |>
+or_amb_res <- result_dirs |> map(get_or_amb_acc) |> reduce(rbind) |>
+  filter(batchNum == 0) |>
   filter(epoch != 0)
+mean_or_amb_res <- or_amb_res |>
+  group_by(probetype, epoch, answer_type) |>
+  summarise(mean_prop = mean(proportion), sd_prop = sd(proportion)) 
+
+ggplot(or_amb_res|> filter(answer_type == "prop_exclusive"), aes(x=epoch, y=proportion, color=as.factor(seed)))+
+geom_line(alpha=0.5)
+
+sd_props = mean_or_amb_res|> filter(answer_type == "prop_exclusive") |> ungroup() |> select(sd_prop) 
+mean(sd_props$sd_prop)
 
 p= ggplot(mean_or_amb_res|> filter(answer_type == "prop_exclusive"), aes(x=epoch, y=mean_prop, fill=answer_type)) +
-  geom_ribbon(aes(ymin = 0, ymax = mean_prop), alpha=0.5)+
+  #geom_ribbon(aes(ymin = 0, ymax = mean_prop), alpha=0.5)+
+  geom_line(aes(y = mean_prop), alpha=0.5)+
+  geom_ribbon(aes(ymin = mean_prop-sd_prop, ymax = mean_prop+sd_prop), alpha=0.5)+
   geom_hline(yintercept=0.5, linetype="dashed", alpha = 0.6)+
   scale_color_manual(labels=c("exclusive", "inclusive"), values=c("#8c6bb1", "#41ae76"))+
   scale_fill_manual(labels=c("exclusive", "inclusive"), values=c("#8c6bb1", "#41ae76"))+
@@ -188,7 +197,8 @@ p= ggplot(mean_or_amb_res|> filter(answer_type == "prop_exclusive"), aes(x=epoch
 
 p
 
-ggsave("exp1_or2_exclusive.jpeg", plot=p, device="jpeg", width = 5.6, height = 3.5, units="in")
+
+#ggsave("exp1_or2_exclusive.jpeg", plot=p, device="jpeg", width = 5.6, height = 3.5, units="in")
 
 ```
 
@@ -240,10 +250,18 @@ mean_comb_results <- comb_results |> filter(batchNum == 0) |>
   group_by(experiment, probetype, epoch, answer) |>
   summarise(mean_acc = mean(prop_correct), sd_acc = sd(prop_correct), mean_correct= mean(overall_correct/overall_total), sd_correct = sd(overall_correct/overall_total))
 
-mean_comb_or_amb <- comb_or_amb |> filter(batchNum == 0) |>
-  group_by(experiment, probetype, epoch, answer_type) |>
-  summarise(mean_prop = mean(proportion), sd_prop = sd(proportion))|>
+comb_or_amb <- comb_or_amb |> filter(batchNum == 0) |>
   filter(epoch != 0)
+mean_comb_or_amb <- comb_or_amb |> 
+  group_by(experiment, probetype, epoch, answer_type) |>
+  summarise(mean_prop = mean(proportion), sd_prop = sd(proportion))
+
+ggplot(comb_or_amb |> filter(answer_type == "prop_exclusive"), aes(x=epoch, y=proportion, color=as.factor(seed)))+
+geom_line(alpha=0.5)+
+facet_wrap(vars(experiment))
+
+sd_props = mean_comb_or_amb|> filter(answer_type == "prop_exclusive") |> filter(experiment =="Without alternative") |> ungroup() |> select(sd_prop) 
+mean(sd_props$sd_prop) 
 
 probe.labs <- c("AND", "OR")
 names(probe.labs) <- c("probeAND2", "probeOR2")
@@ -319,7 +337,7 @@ p= ggplot(mean_comb_or_amb |> filter(answer_type == "prop_exclusive") |>
 
 p
 
-ggsave("exp2_or2_exclusive_comp.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+#ggsave("exp2_or2_exclusive_comp.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
 ```
 
 #### plots with F1 (NEW)
@@ -557,11 +575,19 @@ get_or_amb_acc <- function(result_dir){
   return(or_amb_acc)
 }
 
-or_amb_res <- result_dirs |> map(get_or_amb_acc) |> reduce(rbind)
-mean_or_amb_res <- or_amb_res |> filter(batchNum == 0) |>
-  group_by(probetype, epoch, answer_type) |>
-  summarise(mean_prop = mean(proportion), sd_prop = sd(proportion))|>
+or_amb_res <- result_dirs |> map(get_or_amb_acc) |> reduce(rbind) |>
+  filter(batchNum == 0) |>
   filter(epoch != 0)
+mean_or_amb_res <- or_amb_res |>
+  group_by(probetype, epoch, answer_type) |>
+  summarise(mean_prop = mean(proportion), sd_prop = sd(proportion)) 
+
+ggplot(or_amb_res|> filter(answer_type == "prop_exclusive"), aes(x=epoch, y=proportion, color=as.factor(seed)))+
+geom_line(alpha=0.5)
+
+sd_props = mean_or_amb_res|> filter(answer_type == "prop_exclusive") |> ungroup() |> select(sd_prop) 
+mean(sd_props$sd_prop)
+
 
 p= ggplot(mean_or_amb_res |> filter(answer_type == "prop_exclusive"), aes(x=epoch, y=mean_prop, fill=answer_type)) +
   geom_ribbon(aes(ymin = 0, ymax = mean_prop), alpha=0.5)+
@@ -573,7 +599,7 @@ p= ggplot(mean_or_amb_res |> filter(answer_type == "prop_exclusive"), aes(x=epoc
   theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
 
 p
-ggsave("exp3_or2_exclusive.jpeg", plot=p, device="jpeg", width = 5.6, height = 3.5, units="in")
+#ggsave("exp3_or2_exclusive.jpeg", plot=p, device="jpeg", width = 5.6, height = 3.5, units="in")
 ```
 
 #### Plot F1 comparison Exp 1 and Exp 3
@@ -764,7 +790,7 @@ p = ggplot(mean_behind_front_res_f1, aes(x=epoch, y=mean_f1_score))+
   theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
   
 p  
-ggsave("exp1_behind_front_overall_f1.jpeg", plot=p, device="jpeg", width = 5.7, height = 3.5, units="in")
+#ggsave("exp1_behind_front_overall_f1.jpeg", plot=p, device="jpeg", width = 5.7, height = 3.5, units="in")
 ```
 
 #### Plot F1 by answer type (NEW)
@@ -780,7 +806,7 @@ p = ggplot(mean_behind_front_res_f1, aes(x=epoch, y=mean_f1_answer))+
   theme(axis.text = element_text(size=14), legend.text = element_text(size = 14))
 
 p
-ggsave("exp1_behind_front_answertype_f1.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
+#ggsave("exp1_behind_front_answertype_f1.jpeg", plot=p, device="jpeg", width = 8, height = 3.5, units="in")
 ```
 
 #### Plot F1 by distance between referents (NEW)
