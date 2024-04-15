@@ -1,6 +1,6 @@
 # Learning the meanings of function words from grounded language using a visual question answering model
  
-This repository contains all the code for models, probes, and evaluations presented in the paper [*Learning the meanings of function words from grounded language using a visual question answering model*](./writeups/Function_words_and_VQA_manuscript.pdf) by Eva Portelance, Michael C. Frank, and Dan Jurafsky. 2023.
+This repository contains all the code for models, probes, and evaluations presented in the paper [*Learning the meanings of function words from grounded language using a visual question answering model*](./writeups/manuscript_clean.pdf) by Eva Portelance, Michael C. Frank, and Dan Jurafsky. 2023.
 
 ## Data
 
